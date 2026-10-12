@@ -4,23 +4,10 @@ import { NextRequest } from 'next/server';
 
 export const COOKIE_NAME = 'sakar_admin_session';
 
-let hasWarnedAuthSecretDev = false;
+import { getAuthSecret } from './auth-secret';
 
 function getSecretKey(): string {
-  const secret = process.env.ADMIN_JWT_SECRET;
-  if (secret && secret.trim().length > 0) {
-    return secret.trim();
-  }
-
-  // Resilient deterministic fallback using available environment entropy
-  // Prevents locking out or crashing Vercel serverless functions if ADMIN_JWT_SECRET was omitted in Vercel settings
-  const fallbackEntropy =
-    process.env.MONGODB_URI ||
-    process.env.ADMIN_PASSWORD ||
-    process.env.SYNC_SECRET ||
-    'explore-with-sakar-auth-resilient-key-2026';
-
-  return crypto.createHash('sha256').update(`sakar-jwt-key-${fallbackEntropy}`).digest('hex');
+  return getAuthSecret();
 }
 
 export function hashPassword(password: string, salt?: string): { hash: string; salt: string } {

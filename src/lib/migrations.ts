@@ -1,60 +1,16 @@
-import { Db } from 'mongodb';
 import { getSeedStoreFromDisk } from './seed';
 
 export interface Migration {
   id: string;
-  run: (db: Db) => Promise<void>;
   runFile?: (store: Record<string, any>) => Promise<void> | void;
 }
 
 /**
- * Registry of all store migrations in chronological order.
- * Each migration is guaranteed to execute at most once per database/store.
+ * Registry of store migrations for offline file store in development.
  */
 export const MIGRATIONS: Migration[] = [
   {
     id: '2026-remove-packages',
-    run: async (db: Db) => {
-      const col = db.collection('cms_store');
-      const legacyPkgUrl = ['/', 'packages'].join('');
-      // 1. Remove packages from pages array
-      await col.updateOne(
-        { _id: 'active_store' as any },
-        {
-          $pull: {
-            pages: { slug: 'packages' } as any,
-            'navigation.mainNav': { url: legacyPkgUrl } as any,
-          },
-        }
-      );
-
-      // 2. Remove packages link from footer columns and main nav children if nested
-      try {
-        await col.updateOne(
-          { _id: 'active_store' as any },
-          {
-            $pull: {
-              'navigation.footer.columns.$[].links': { url: legacyPkgUrl } as any,
-            },
-          }
-        );
-      } catch (e) {
-        // Safe ignore if schema differs
-      }
-
-      try {
-        await col.updateOne(
-          { _id: 'active_store' as any },
-          {
-            $pull: {
-              'navigation.mainNav.$[].children': { url: legacyPkgUrl } as any,
-            },
-          }
-        );
-      } catch (e) {
-        // Safe ignore
-      }
-    },
     runFile: (store: Record<string, any>) => {
       const legacyPkgUrl = ['/', 'packages'].join('');
       if (Array.isArray(store.pages)) {
@@ -77,116 +33,8 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
-  // Migration 2026-restore-original-blogs removed to prevent legacy sample records from being repopulated
   {
     id: '2026-canonical-experiences-urls',
-    run: async (db: Db) => {
-      const col = db.collection('cms_store');
-      const doc = await col.findOne({ _id: 'active_store' as any });
-      if (!doc) return;
-
-      const normalizeUrl = (u: string) => {
-        if (!u) return u;
-        if (u === '/experience' || u === '/services' || u === '/service' || u === '/experience/all-curated-experiences') {
-          return '/experiences';
-        }
-        if (u === '/experience/go-beyond' || u === '/services/beyond-the-map' || u === '/experience/beyond-the-map') {
-          return '/experiences/beyond-the-map';
-        }
-        if (u === '/experience/go-spiritual' || u === '/services/spiritual-wellness' || u === '/experience/spiritual-wellness') {
-          return '/experiences/spiritual-wellness';
-        }
-        if (u === '/experience/feel-closer' || u === '/services/homestays' || u === '/experience/homestays') {
-          return '/experiences/homestays';
-        }
-        if (u === '/experience/leave-a-mark' || u === '/services/leave-a-mark') {
-          return '/experiences/leave-a-mark';
-        }
-        if (u === '/experience/custom-private-journeys' || u === '/services/custom-journeys' || u === '/experience/custom-journeys') {
-          return '/experiences/custom-journeys';
-        }
-        if (u.startsWith('/experience/')) {
-          return u.replace('/experience/', '/experiences/');
-        }
-        if (u.startsWith('/services/')) {
-          return u.replace('/services/', '/experiences/');
-        }
-        return u;
-      };
-
-      // 1. Update navigation
-      let navModified = false;
-      const nav = doc.navigation;
-      if (nav) {
-        if (Array.isArray(nav.mainNav)) {
-          nav.mainNav.forEach((item: any) => {
-            const newUrl = normalizeUrl(item.url);
-            if (newUrl !== item.url) {
-              item.url = newUrl;
-              navModified = true;
-            }
-            if (Array.isArray(item.children)) {
-              item.children.forEach((child: any) => {
-                const childUrl = normalizeUrl(child.url);
-                if (childUrl !== child.url) {
-                  child.url = childUrl;
-                  navModified = true;
-                }
-              });
-            }
-          });
-        }
-        if (nav.footer?.columns && Array.isArray(nav.footer.columns)) {
-          nav.footer.columns.forEach((c: any) => {
-            if (Array.isArray(c.links)) {
-              c.links.forEach((l: any) => {
-                const linkUrl = normalizeUrl(l.url);
-                if (linkUrl !== l.url) {
-                  l.url = linkUrl;
-                  navModified = true;
-                }
-              });
-            }
-          });
-        }
-      }
-
-      // 2. Update pages
-      let pagesModified = false;
-      const pages: any[] = Array.isArray(doc.pages) ? doc.pages : [];
-      pages.forEach((p) => {
-        const newUrl = normalizeUrl(p.url);
-        if (newUrl !== p.url) {
-          p.url = newUrl;
-          pagesModified = true;
-        }
-        if (p.seo?.canonicalUrl) {
-          const canon = normalizeUrl(p.seo.canonicalUrl);
-          if (canon !== p.seo.canonicalUrl) {
-            p.seo.canonicalUrl = canon;
-            pagesModified = true;
-          }
-        }
-      });
-
-      // 3. Update experiences CTA link
-      let expModified = false;
-      const experiences: any[] = Array.isArray(doc.experiences) ? doc.experiences : [];
-      experiences.forEach((e) => {
-        if (e.ctaLink && normalizeUrl(e.ctaLink) !== e.ctaLink) {
-          e.ctaLink = normalizeUrl(e.ctaLink);
-          expModified = true;
-        }
-      });
-
-      if (navModified || pagesModified || expModified) {
-        const updateDoc: any = { lastUpdated: new Date().toISOString() };
-        if (navModified) updateDoc.navigation = nav;
-        if (pagesModified) updateDoc.pages = pages;
-        if (expModified) updateDoc.experiences = experiences;
-        await col.updateOne({ _id: 'active_store' as any }, { $set: updateDoc });
-      }
-    },
     runFile: (store: Record<string, any>) => {
       const normalizeUrl = (u: string) => {
         if (!u) return u;
@@ -249,65 +97,6 @@ export const MIGRATIONS: Migration[] = [
   },
   {
     id: '2026-sync-all-37-blogs',
-    run: async (db: Db) => {
-      const col = db.collection('cms_store');
-      const seedStore = getSeedStoreFromDisk();
-      const canonicalBlogs: any[] = seedStore.blogs || [];
-      if (canonicalBlogs.length === 0) return;
-
-      const doc = await col.findOne({ _id: 'active_store' as any }, { projection: { blogs: 1 } });
-      const currentBlogs: any[] = doc && Array.isArray(doc.blogs) ? doc.blogs : [];
-
-      const blogMap = new Map<string, any>();
-      currentBlogs.forEach((b) => {
-        if (b.slug) blogMap.set(b.slug, b);
-      });
-
-      let modified = false;
-      canonicalBlogs.forEach((cBlog: any) => {
-        const existing = blogMap.get(cBlog.slug);
-        if (!existing) {
-          blogMap.set(cBlog.slug, {
-            ...cBlog,
-            id: cBlog.id || `blog-${Date.now()}-${cBlog.slug}`,
-            status: cBlog.status || 'published',
-            createdAt: cBlog.createdAt || new Date().toISOString(),
-            updatedAt: cBlog.updatedAt || new Date().toISOString(),
-          });
-          modified = true;
-        } else {
-          let itemModified = false;
-          if (!existing.content || !Array.isArray(existing.content) || existing.content.length === 0) {
-            existing.content = cBlog.content;
-            itemModified = true;
-          }
-          if (!existing.author) {
-            existing.author = cBlog.author;
-            itemModified = true;
-          }
-          if (!existing.featuredImage) {
-            existing.featuredImage = cBlog.featuredImage;
-            itemModified = true;
-          }
-          if (!existing.id) {
-            existing.id = `blog-${Date.now()}-${cBlog.slug}`;
-            itemModified = true;
-          }
-          if (itemModified) {
-            existing.updatedAt = new Date().toISOString();
-            modified = true;
-          }
-        }
-      });
-
-      const merged = Array.from(blogMap.values());
-      if (modified || merged.length !== currentBlogs.length) {
-        await col.updateOne(
-          { _id: 'active_store' as any },
-          { $set: { blogs: merged, lastUpdated: new Date().toISOString() } }
-        );
-      }
-    },
     runFile: (store: Record<string, any>) => {
       const seedStore = getSeedStoreFromDisk();
       const canonicalBlogs: any[] = seedStore.blogs || [];
@@ -329,65 +118,6 @@ export const MIGRATIONS: Migration[] = [
   },
 ];
 
-let migrationsRunPromise: Promise<void> | null = null;
-
-/**
- * Runs all pending migrations against MongoDB atomically.
- * Uses atomic $addToSet with an equality guard ($ne) so concurrent requests or multiple server instances
- * never execute the same migration twice.
- */
-export async function runPendingMigrations(db: Db): Promise<void> {
-  if (MIGRATIONS.length === 0) return;
-
-  if (migrationsRunPromise) {
-    return migrationsRunPromise;
-  }
-
-  migrationsRunPromise = (async () => {
-    const col = db.collection('cms_store');
-
-    // Ensure active_store document exists
-    await col.updateOne(
-      { _id: 'active_store' as any },
-      { $setOnInsert: { createdAt: new Date().toISOString() } },
-      { upsert: true }
-    );
-
-    for (const m of MIGRATIONS) {
-      // Atomically check and register the migration ID
-      const res = await col.updateOne(
-        { _id: 'active_store' as any, migrations: { $ne: m.id } },
-        {
-          $addToSet: { migrations: m.id } as any,
-          $set: { lastUpdated: new Date().toISOString() },
-        }
-      );
-
-      // If modifiedCount > 0, this instance won the race to run this migration
-      if (res.modifiedCount > 0) {
-        console.log(`[migration] Starting migration: ${m.id}`);
-        try {
-          await m.run(db);
-          console.log(`[migration] Completed migration: ${m.id}`);
-        } catch (err) {
-          console.error(`[migration] Failed executing ${m.id}:`, err);
-          // Revert atomic registration on failure so it can be retried
-          await col.updateOne(
-            { _id: 'active_store' as any },
-            { $pull: { migrations: m.id } as any }
-          );
-          throw err;
-        }
-      }
-    }
-  })().catch((err) => {
-    migrationsRunPromise = null;
-    throw err;
-  });
-
-  return migrationsRunPromise;
-}
-
 /**
  * Runs pending migrations against offline file store in development when CMS_STORAGE=file.
  */
@@ -399,7 +129,6 @@ export function runPendingFileMigrations(store: Record<string, any>): boolean {
   let modified = false;
   for (const m of MIGRATIONS) {
     if (!store.migrations.includes(m.id)) {
-      console.log(`[migration] Running file migration: ${m.id}`);
       if (m.runFile) {
         m.runFile(store);
       }

@@ -1,50 +1,50 @@
 export const dynamic = 'force-dynamic';
 
+import { timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest, getAdminSession } from '@/lib/auth';
-import { getDb, MongoUnavailableError } from '@/lib/mongodb';
+import { getFirestoreDb, FirebaseUnavailableError } from '@/lib/firebase-admin';
 import { getSeedForKey } from '@/lib/seed';
 import { invalidateStoreCache } from '@/lib/store';
 import { revalidateTag } from 'next/cache';
 
+function safeEqual(a: string, b: string): boolean {
+  try {
+    const ab = Buffer.from(a);
+    const bb = Buffer.from(b);
+    return ab.length === bb.length && timingSafeEqual(ab, bb);
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Auth check that falls back to a shared secret key when the admin session is broken.
- * This allows the endpoint to be called even when ADMIN_JWT_SECRET differs between
- * environments (which is the root cause of admin APIs returning 401 in production).
+ * Auth check using session or SYNC_SECRET header.
  */
 async function isAuthorized(req: NextRequest): Promise<boolean> {
-  // Option 1: valid admin session cookie
   try {
     const session = getSessionFromRequest(req) || (await getAdminSession(req));
     if (session) return true;
   } catch {
     // session check may throw if ADMIN_JWT_SECRET is missing — fall through
   }
-  // Option 2: SYNC_SECRET header for bootstrapping (set in Vercel env)
-  const syncSecret = process.env.SYNC_SECRET || process.env.ADMIN_JWT_SECRET;
+  const syncSecret = process.env.SYNC_SECRET;
   const headerSecret = req.headers.get('x-sync-secret');
-  if (syncSecret && headerSecret === syncSecret) return true;
+  if (syncSecret && headerSecret && safeEqual(headerSecret, syncSecret)) return true;
   return false;
 }
 
 /**
  * POST /api/admin/sync-seed
  *
- * Pushes seed data from data/cms-store.json into the production MongoDB
- * active_store document WITHOUT overwriting existing data that has been
- * edited by the admin.
- *
- * Strategy per field:
- *   - blogs:       $set only if field is missing OR empty (preserves edited blogs)
- *   - experiences: $set only if field is missing OR empty
- *   - All other fields: never overwritten (navigation, settings, etc. are admin-managed)
- *
- * Returns safe counts. Does not expose credentials.
- *
- * This endpoint is intentionally admin-only.
- * Remove or disable once the initial sync is confirmed.
+ * Pushes seed data from data/cms-store.json into the production Firebase Firestore
+ * active_store document WITHOUT overwriting existing data that has been edited.
  */
 export async function POST(req: NextRequest) {
+  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_SYNC_SEED !== 'true') {
+    return NextResponse.json({ error: 'Endpoint disabled in production' }, { status: 404 });
+  }
+
   const authorized = await isAuthorized(req);
   if (!authorized) {
     return NextResponse.json({ error: 'Unauthorized — provide admin session or x-sync-secret header' }, { status: 401 });
@@ -58,25 +58,20 @@ export async function POST(req: NextRequest) {
   }
 
   const fieldsToSync: string[] = body.fields || ['blogs', 'experiences'];
-  const force = Boolean(body.force); // if true, overwrites existing non-empty data
+  const force = Boolean(body.force);
 
   const report: Record<string, any> = {};
 
   try {
-    const db = await getDb();
-    const col = db.collection('cms_store');
-
-    // Read current active_store to decide what needs seeding
-    const projection: Record<string, 1> = { _id: 1 };
-    for (const f of fieldsToSync) {
-      projection[f] = 1;
-    }
-    const existing = await col.findOne({ _id: 'active_store' as any }, { projection });
+    const db = getFirestoreDb();
+    const docRef = db.collection('cms_store').doc('active_store');
+    const docSnap = await docRef.get();
+    const existing = docSnap.exists ? docSnap.data() || {} : {};
 
     const setPayload: Record<string, any> = { lastUpdated: new Date().toISOString() };
 
     for (const field of fieldsToSync) {
-      const currentVal = existing ? existing[field] : undefined;
+      const currentVal = existing[field];
       const isEmpty =
         currentVal === undefined ||
         currentVal === null ||
@@ -101,16 +96,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Write all fields that need syncing in one operation
     const syncedFields = Object.keys(setPayload).filter((k) => k !== 'lastUpdated');
     if (syncedFields.length > 0) {
-      await col.updateOne(
-        { _id: 'active_store' as any },
-        { $set: setPayload },
-        { upsert: true }
-      );
+      await docRef.set(setPayload, { merge: true });
 
-      // Invalidate in-process cache and Next.js data cache for synced fields
       for (const field of syncedFields) {
         invalidateStoreCache(field);
         try {
@@ -123,16 +112,16 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      database: process.env.MONGODB_DB || 'explore_with_sakar',
+      provider: 'firebase',
       syncedFields,
       report,
     });
   } catch (err: any) {
-    const isUnavailable = err instanceof MongoUnavailableError;
+    const isUnavailable = err instanceof FirebaseUnavailableError;
     return NextResponse.json(
       {
         success: false,
-        error: isUnavailable ? 'MongoDB unavailable' : err.message || String(err),
+        error: isUnavailable ? 'Firebase unavailable' : err.message || String(err),
       },
       { status: isUnavailable ? 503 : 500 }
     );

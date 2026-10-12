@@ -3,12 +3,12 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { getSessionFromRequest } from '@/lib/auth';
+import { getStorageBucket, isFirebaseConfigured } from '@/lib/firebase-admin';
 
 const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/png',
   'image/webp',
-  'image/svg+xml',
   'image/gif',
   'image/avif',
 ];
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     // 3. Validate mime type
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { error: `Invalid file type (${file.type}). Only JPG, PNG, WEBP, SVG, AVIF, and GIF are permitted.` },
+        { error: `Invalid file type (${file.type}). Only JPG, PNG, WEBP, AVIF, and GIF are permitted.` },
         { status: 400 }
       );
     }
@@ -48,8 +48,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Try writing to /public/uploads, or fallback to Data URL in read-only environments (e.g. Vercel)
-    let publicUrl = '';
+    // 5. Generate sanitized file name
     const ext = path.extname(file.name) || '.jpg';
     const sanitizedBase = path
       .basename(file.name, ext)
@@ -70,36 +69,75 @@ export async function POST(req: NextRequest) {
           pipeline = pipeline.resize({ width: 1920, height: 1920, fit: 'inside', withoutEnlargement: true });
         }
         if (file.type === 'image/jpeg') {
-          buffer = await pipeline.jpeg({ quality: 80, mozjpeg: true }).toBuffer();
+          buffer = Buffer.from(await pipeline.jpeg({ quality: 80, mozjpeg: true }).toBuffer());
         } else if (file.type === 'image/png') {
-          buffer = await pipeline.png({ quality: 80, compressionLevel: 8 }).toBuffer();
+          buffer = Buffer.from(await pipeline.png({ quality: 80, compressionLevel: 8 }).toBuffer());
         } else if (file.type === 'image/webp') {
-          buffer = await pipeline.webp({ quality: 80 }).toBuffer();
+          buffer = Buffer.from(await pipeline.webp({ quality: 80 }).toBuffer());
         }
       } catch (sharpErr) {
         console.warn('Sharp optimization skipped for upload:', sharpErr);
       }
     }
 
-    try {
-      const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-      const filePath = path.join(uploadsDir, uniqueName);
-      fs.writeFileSync(filePath, buffer);
-      publicUrl = `/uploads/${uniqueName}`;
-    } catch (fsErr) {
-      console.warn('Read-only filesystem detected, falling back to base64 Data URL:', fsErr);
-      if (buffer.length > MAX_BASE64_FALLBACK_SIZE) {
-        return NextResponse.json(
-          {
-            error: `Image size (${(buffer.length / 1024).toFixed(0)} KB) exceeds the 500 KB limit for serverless storage fallback. Please upload a smaller image or configure cloud storage.`,
+    let publicUrl = '';
+    let storageProvider = 'local';
+
+    // 6. Strategy A: Firebase Cloud Storage (preferred in production)
+    if (isFirebaseConfigured()) {
+      try {
+        const bucket = getStorageBucket();
+        const destination = `uploads/${uniqueName}`;
+        const fileUpload = bucket.file(destination);
+
+        await fileUpload.save(buffer, {
+          metadata: {
+            contentType: file.type,
+            cacheControl: 'public, max-age=31536000',
           },
-          { status: 413 }
-        );
+          resumable: false,
+        });
+
+        // Make publicly readable or construct public media URL
+        try {
+          await fileUpload.makePublic();
+        } catch {
+          // If uniform bucket-level access is enabled on GCP bucket, makePublic() may throw;
+          // in that case, the storage.googleapis.com URL is used.
+        }
+
+        publicUrl = `https://storage.googleapis.com/${bucket.name}/${destination}`;
+        storageProvider = 'firebase-storage';
+      } catch (firebaseErr: any) {
+        console.error('[upload] Firebase Cloud Storage upload failed, attempting local fallback:', firebaseErr?.message || firebaseErr);
       }
-      publicUrl = `data:${file.type};base64,${buffer.toString('base64')}`;
+    }
+
+    // 7. Strategy B: Local Disk (for local dev or fallback)
+    if (!publicUrl) {
+      try {
+        const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        const filePath = path.join(uploadsDir, uniqueName);
+        fs.writeFileSync(filePath, buffer);
+        publicUrl = `/uploads/${uniqueName}`;
+        storageProvider = 'local-fs';
+      } catch (fsErr) {
+        // Strategy C: Read-only serverless environment without cloud storage credentials
+        console.warn('Read-only filesystem detected, falling back to base64 Data URL:', fsErr);
+        if (buffer.length > MAX_BASE64_FALLBACK_SIZE) {
+          return NextResponse.json(
+            {
+              error: `Image size (${(buffer.length / 1024).toFixed(0)} KB) exceeds the 500 KB limit for serverless storage fallback. Configure Firebase Cloud Storage environment variables for persistent uploads.`,
+            },
+            { status: 413 }
+          );
+        }
+        publicUrl = `data:${file.type};base64,${buffer.toString('base64')}`;
+        storageProvider = 'base64-data-url';
+      }
     }
 
     return NextResponse.json({
@@ -108,6 +146,7 @@ export async function POST(req: NextRequest) {
       fileName: uniqueName,
       size: buffer.length,
       mimeType: file.type,
+      provider: storageProvider,
     });
   } catch (error: any) {
     console.error('File upload error:', error);

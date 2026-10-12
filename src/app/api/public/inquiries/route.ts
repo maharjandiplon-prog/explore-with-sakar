@@ -8,27 +8,47 @@ function sanitize(str: unknown): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+    }
 
-    const fullName = sanitize(body.fullName);
-    const email = sanitize(body.email);
-    const whatsapp = sanitize(body.whatsapp);
-    const country = sanitize(body.country);
-    const travelDates = sanitize(body.travelDates);
-    const approximateDuration = sanitize(body.approximateDuration);
-    const travelersCount = sanitize(body.travelersCount);
-    const travelStyle = sanitize(body.travelStyle);
-    const homestayInterest = sanitize(body.homestayInterest);
-    const message = sanitize(body.message);
+    // Honeypot: real users never fill this hidden field
+    if (body.website) {
+      return NextResponse.json({
+        success: true,
+        message: 'Namaste! Your inquiry has been received. Sakar will contact you personally soon.',
+      }); // silently drop bots
+    }
 
-    const preferredInterests: string[] = Array.isArray(body.preferredInterests)
-      ? body.preferredInterests.map((item: unknown) => sanitize(item)).filter(Boolean)
-      : [];
+    const clip = (v: unknown, max: number) =>
+      String(v ?? '')
+        .replace(/<[^>]*>?/gm, '')
+        .trim()
+        .slice(0, max);
+
+    const fullName = clip(body.fullName, 100);
+    const email = clip(body.email, 150);
+    const phone = clip(body.phone || body.whatsapp, 30);
+    const country = clip(body.country, 60);
+    const travelDates = clip(body.travelDates, 100);
+    const approximateDuration = clip(body.approximateDuration, 50);
+    const travelersCount = clip(body.travelersCount, 50);
+    const travelStyle = clip(body.travelStyle, 100);
+    const homestayInterest = clip(body.homestayInterest, 100);
+    let message = clip(body.message, 2000);
+
+    // If message is omitted or too short, construct a helpful default summary if dates/details provided
+    if (!message && (travelDates || approximateDuration || travelersCount)) {
+      message = `Custom journey inquiry from ${fullName}.${travelDates ? ` Dates: ${travelDates}.` : ''}${
+        approximateDuration ? ` Duration: ${approximateDuration}.` : ''
+      }${travelersCount ? ` Party: ${travelersCount}.` : ''}`;
+    }
 
     // Validation
-    if (!fullName || fullName.length < 2) {
+    if (!fullName || !message) {
       return NextResponse.json(
-        { error: 'Please enter your full name.' },
+        { error: 'Name and message are required' },
         { status: 400 }
       );
     }
@@ -41,21 +61,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // If message is omitted or too short, construct a helpful default summary
-    const finalMessage =
-      message && message.length >= 5
-        ? message
-        : `Custom journey inquiry from ${fullName}.${travelDates ? ` Dates: ${travelDates}.` : ''}${
-            approximateDuration ? ` Duration: ${approximateDuration}.` : ''
-          }${travelersCount ? ` Party: ${travelersCount}.` : ''}${
-            preferredInterests.length > 0 ? ` Interests: ${preferredInterests.join(', ')}.` : ''
-          }`;
+    const preferredInterests: string[] = Array.isArray(body.preferredInterests)
+      ? body.preferredInterests
+          .map((item: unknown) => clip(item, 80))
+          .filter(Boolean)
+          .slice(0, 20)
+      : [];
 
     let interestedEvent: { id: string; title: string } | undefined = undefined;
     const reqEventId = typeof body.interestedEventId === 'string'
-      ? sanitize(body.interestedEventId)
+      ? clip(body.interestedEventId, 50)
       : (body.interestedEvent && typeof body.interestedEvent.id === 'string'
-          ? sanitize(body.interestedEvent.id)
+          ? clip(body.interestedEvent.id, 50)
           : '');
 
     if (reqEventId) {
@@ -76,7 +93,7 @@ export async function POST(req: NextRequest) {
     const newInquiry = await createInquiry({
       fullName,
       email,
-      whatsapp: whatsapp || undefined,
+      whatsapp: phone || undefined,
       country: country || undefined,
       travelDates: travelDates || undefined,
       approximateDuration: approximateDuration || undefined,
@@ -84,7 +101,7 @@ export async function POST(req: NextRequest) {
       travelStyle: travelStyle || undefined,
       preferredInterests,
       homestayInterest: homestayInterest || undefined,
-      message: finalMessage,
+      message,
       interestedEvent,
     });
 

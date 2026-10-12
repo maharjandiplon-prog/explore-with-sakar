@@ -100,6 +100,7 @@ function InquiryFormInner({
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [honeypot, setHoneypot] = useState('');
 
   useEffect(() => {
     if (availableEvents && availableEvents.length > 0) {
@@ -152,6 +153,7 @@ function InquiryFormInner({
 
     const submissionData = {
       ...formData,
+      website: honeypot,
       message:
         formData.message && formData.message.trim().length >= 5
           ? formData.message.trim()
@@ -286,6 +288,18 @@ function InquiryFormInner({
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-8">
+          {/* Honeypot field: real users never fill this, automated spam bots do */}
+          <input
+            type="text"
+            name="website"
+            value={honeypot}
+            onChange={(e) => setHoneypot(e.target.value)}
+            tabIndex={-1}
+            autoComplete="off"
+            className="hidden"
+            aria-hidden="true"
+            style={{ display: 'none', position: 'absolute', left: '-9999px' }}
+          />
           {/* Section 1: Personal Details */}
           <div>
             <h4 className="font-editorial-serif text-lg font-bold text-himalaya-950 mb-4 pb-2 border-b border-parchment-300">

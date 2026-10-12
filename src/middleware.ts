@@ -1,35 +1,76 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { getAuthSecret } from '@/lib/auth-secret';
 
 const COOKIE_NAME = 'sakar_admin_session';
+const enc = new TextEncoder();
 
-function isTokenExpired(token: string | undefined): boolean {
-  if (!token) return true;
+function b64urlToBytes(s: string): Uint8Array {
+  const b64 = s.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(s.length / 4) * 4, '=');
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) {
+    bytes[i] = bin.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function isTokenValid(token: string | undefined): Promise<boolean> {
+  if (!token) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
   try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return true;
-    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const json = atob(base64);
-    const payload = JSON.parse(json);
-    if (!payload.exp) return true;
-    const now = Math.floor(Date.now() / 1000);
-    return payload.exp < now;
+    const key = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(getAuthSecret()),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify']
+    );
+    const ok = await crypto.subtle.verify(
+      'HMAC',
+      key,
+      b64urlToBytes(parts[2]) as unknown as BufferSource,
+      enc.encode(`${parts[0]}.${parts[1]}`)
+    );
+    if (!ok) return false;
+    const payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[1])));
+    return typeof payload.exp === 'number' && payload.exp > Date.now() / 1000;
   } catch {
-    return true;
+    return false;
   }
 }
 
-export function middleware(request: NextRequest) {
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const token = request.cookies.get(COOKIE_NAME)?.value;
-  const isInvalidOrExpired = isTokenExpired(token);
+  const token =
+    request.cookies.get(COOKIE_NAME)?.value ||
+    request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+  const isInvalidOrExpired = !(await isTokenValid(token));
 
   // 1. API Admin Protection
   if (pathname.startsWith('/api/admin')) {
     if (pathname === '/api/admin/auth/login') {
       return NextResponse.next();
     }
-    if (isInvalidOrExpired) {
+
+    // Allow bootstrap/diagnostic endpoints if valid x-sync-secret is presented
+    const syncSecret = process.env.SYNC_SECRET;
+    const headerSecret = request.headers.get('x-sync-secret');
+    const isSyncSecretValid =
+      Boolean(syncSecret && headerSecret) &&
+      safeCompare(headerSecret!, syncSecret!);
+
+    if (isInvalidOrExpired && !isSyncSecretValid) {
       const res = NextResponse.json({ error: 'Unauthorized: Admin authentication required' }, { status: 401 });
       if (token) {
         res.cookies.delete(COOKIE_NAME);
@@ -44,7 +85,6 @@ export function middleware(request: NextRequest) {
     const isLoginPage = pathname === '/admin/login';
 
     // NEVER redirect away from /admin/login automatically!
-    // Allowing the user to view /admin/login eliminates infinite redirect loops.
     if (isLoginPage) {
       return NextResponse.next();
     }

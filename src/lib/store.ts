@@ -1,42 +1,24 @@
 import fs from 'fs';
 import path from 'path';
-import { getDb, MongoUnavailableError } from './mongodb';
+import { getFirestoreDb, isFirebaseConfigured, FirebaseUnavailableError } from './firebase-admin';
 import { getSeedForKey, getSeedStoreFromDisk } from './seed';
 import { ContactInquiry } from '@/types/cms';
-import { runPendingMigrations, runPendingFileMigrations } from './migrations';
+import { runPendingFileMigrations } from './migrations';
 
 const IS_DEV = process.env.NODE_ENV !== 'production' && !process.env.VERCEL;
 const DEV_FILE_DIR = path.join(process.cwd(), '.data');
 const DEV_FILE_PATH = path.join(DEV_FILE_DIR, 'dev-store.json');
 
-/**
- * Module-level flag: set to true once migrations have been verified in this process instance.
- * On Vercel serverless, each cold start gets a fresh process (flag starts false, migrations run).
- * On warm invocations, the flag is already true so we skip the extra MongoDB round-trip.
- * This eliminates 1–3 redundant migration-check queries per warm request.
- */
-let migrationsVerifiedInProcess = false;
-let migrationsPromise: Promise<void> | null = null;
+export type StorageProvider = 'firebase' | 'file';
 
-async function ensureMigrations(db: import('mongodb').Db): Promise<void> {
-  if (migrationsVerifiedInProcess) return;
-  if (!migrationsPromise) {
-    migrationsPromise = (async () => {
-      try {
-        await runPendingMigrations(db);
-        migrationsVerifiedInProcess = true;
-      } finally {
-        if (!migrationsVerifiedInProcess) {
-          migrationsPromise = null;
-        }
-      }
-    })();
+export function getActiveStorageProvider(): StorageProvider {
+  if (process.env.CMS_STORAGE === 'file') {
+    return 'file';
   }
-  await migrationsPromise;
-}
-
-function isDevFileStorage(): boolean {
-  return Boolean(IS_DEV && (process.env.CMS_STORAGE === 'file' || !process.env.MONGODB_URI));
+  if (process.env.CMS_STORAGE === 'firebase' || isFirebaseConfigured()) {
+    return 'firebase';
+  }
+  return 'file';
 }
 
 interface CacheEntry {
@@ -44,7 +26,7 @@ interface CacheEntry {
   timestamp: number;
 }
 const readCache = new Map<string, CacheEntry>();
-const READ_CACHE_TTL_MS = 30000; // 30 seconds TTL for fast responses (instantly cleared on writeKey)
+const READ_CACHE_TTL_MS = 30000;
 
 export function invalidateStoreCache(key?: string): void {
   if (key) {
@@ -89,14 +71,10 @@ function writeDevFileStore(store: Record<string, any>): void {
   }
 }
 
-/**
- * Normalizes document shapes without ever restoring default content if an array is empty.
- */
 function normalizeCollectionShape(key: string, value: any): any {
   if (value === undefined || value === null) {
     return value;
   }
-  // If it's an array, ensure it is returned as an array; never re-populate empty array with defaults.
   if (Array.isArray(value)) {
     return value;
   }
@@ -104,21 +82,19 @@ function normalizeCollectionShape(key: string, value: any): any {
 }
 
 /**
- * Read a single collection key from MongoDB via projection.
- * If key is missing in the database document, seeds it atomically and only once.
- * Falls back to read-only in-memory seed if MongoDB is unavailable.
+ * Read a single collection key.
+ * Dispatches to Firebase Firestore (primary) or local dev-store.json file (offline dev).
  */
 export async function readKey<T = any>(key: string, options?: { throwOnError?: boolean }): Promise<T> {
   const cached = readCache.get(key);
   if (cached && Date.now() - cached.timestamp < READ_CACHE_TTL_MS) {
-    console.log(`[PERF:STORE:READ_CACHE_HIT] key=${key} ageMs=${Date.now() - cached.timestamp}`);
     return cached.data as T;
   }
 
-  const startTime = Date.now();
+  const provider = getActiveStorageProvider();
 
-  // 1. Check if offline file dev mode is enabled
-  if (isDevFileStorage()) {
+  // 1. File storage mode (offline dev without Firebase credentials)
+  if (provider === 'file') {
     const store = readDevFileStore();
     const migrated = runPendingFileMigrations(store);
     let val = store[key];
@@ -129,55 +105,36 @@ export async function readKey<T = any>(key: string, options?: { throwOnError?: b
     } else if (migrated) {
       writeDevFileStore(store);
     }
-    const elapsed = Date.now() - startTime;
-    if (IS_DEV) {
-      console.log(`[store] read ${key} ${elapsed}ms (file)`);
-    }
     const res = normalizeCollectionShape(key, val) as T;
     readCache.set(key, { data: res, timestamp: Date.now() });
     return res;
   }
 
-  // 2. Read from MongoDB with single-field projection
+  // 2. Firebase Firestore mode (production & cloud storage)
   try {
-    const db = await getDb();
-    await ensureMigrations(db);
-    const col = db.collection('cms_store');
+    const db = getFirestoreDb();
+    const docRef = db.collection('cms_store').doc('active_store');
+    const docSnap = await docRef.get();
 
-    const qStart = Date.now();
-    // Fetch only the requested field
-    let doc = await col.findOne(
-      { _id: 'active_store' as any },
-      { projection: { [key]: 1 } }
-    );
-    const qDuration = Date.now() - qStart;
-
-    // If active_store or key does not exist yet, atomically seed it using pipeline update
-    if (!doc || doc[key] === undefined) {
-      console.log(`[PERF:STORE:SEED_REQUIRED] key=${key} missing in DB, seeding...`);
+    if (!docSnap.exists) {
+      console.log(`[PERF:STORE:SEED_REQUIRED_FIRESTORE] doc missing, seeding key=${key}...`);
       const seedVal = getSeedForKey(key);
-      await col.updateOne(
-        { _id: 'active_store' as any },
-        [{ $set: { [key]: { $ifNull: [`$${key}`, { $literal: seedVal }] }, lastUpdated: new Date().toISOString() } }],
-        { upsert: true }
-      );
-      doc = await col.findOne(
-        { _id: 'active_store' as any },
-        { projection: { [key]: 1 } }
-      );
+      await docRef.set({ [key]: seedVal, lastUpdated: new Date().toISOString() }, { merge: true });
+      const res = normalizeCollectionShape(key, seedVal) as T;
+      readCache.set(key, { data: res, timestamp: Date.now() });
+      return res;
     }
 
-    const elapsed = Date.now() - startTime;
-    console.log(`[PERF:STORE:READ_DONE] key=${key} queryMs=${qDuration} totalMs=${elapsed}`);
+    const data = docSnap.data() || {};
+    let val = data[key];
 
-    let val = doc ? doc[key] : undefined;
     if (val === undefined) {
-      val = getSeedForKey(key);
+      console.log(`[PERF:STORE:SEED_REQUIRED_FIRESTORE] key=${key} missing in doc, seeding...`);
+      const seedVal = getSeedForKey(key);
+      await docRef.set({ [key]: seedVal, lastUpdated: new Date().toISOString() }, { merge: true });
+      val = seedVal;
     }
-    // For blogs specifically: if MongoDB returned an empty array AND this is a fresh/unseeded DB,
-    // the auto-seed pipeline update above already seeded it. If it's still empty after that, it means
-    // someone intentionally deleted all blogs — respect that and return empty, not seed data.
-    // (The previous unconditional blogs-empty fallback was overriding intentional empty state.)
+
     const res = normalizeCollectionShape(key, val) as T;
     readCache.set(key, { data: res, timestamp: Date.now() });
     return res;
@@ -185,11 +142,7 @@ export async function readKey<T = any>(key: string, options?: { throwOnError?: b
     if (options?.throwOnError) {
       throw err;
     }
-    const elapsed = Date.now() - startTime;
-    if (IS_DEV) {
-      console.warn(`[store] read ${key} ${elapsed}ms (fallback to seed due to: ${err.message})`);
-    }
-    // Mongo unreachable: reads come from the seed file (read-only, in memory)
+    console.warn(`[store] read ${key} failed on Firestore (falling back to seed):`, err?.message || err);
     const seedVal = getSeedForKey(key);
     const res = normalizeCollectionShape(key, seedVal) as T;
     readCache.set(key, { data: res, timestamp: Date.now() });
@@ -198,14 +151,14 @@ export async function readKey<T = any>(key: string, options?: { throwOnError?: b
 }
 
 /**
- * Write a single collection key to MongoDB via $set.
- * Throws MongoUnavailableError on failure. Never falls back to local disk writes on Mongo failure.
+ * Write a single collection key to Firestore.
  */
 export async function writeKey<T = any>(key: string, value: T): Promise<void> {
   invalidateStoreCache(key);
   const lastUpdated = new Date().toISOString();
+  const provider = getActiveStorageProvider();
 
-  if (isDevFileStorage()) {
+  if (provider === 'file') {
     const store = readDevFileStore();
     runPendingFileMigrations(store);
     store[key] = value;
@@ -214,24 +167,20 @@ export async function writeKey<T = any>(key: string, value: T): Promise<void> {
     return;
   }
 
-  const db = await getDb();
-  await ensureMigrations(db);
-  const col = db.collection('cms_store');
-  await col.updateOne(
-    { _id: 'active_store' as any },
-    { $set: { [key]: value, lastUpdated } },
-    { upsert: true }
-  );
+  const db = getFirestoreDb();
+  const docRef = db.collection('cms_store').doc('active_store');
+  await docRef.set({ [key]: value, lastUpdated }, { merge: true });
 }
 
 /**
- * Atomic inquiry creation: pushes to the front of the inquiries array.
+ * Push an inquiry to the front of the list atomically.
  */
 export async function pushInquiry(inquiry: ContactInquiry): Promise<void> {
   invalidateStoreCache('inquiries');
   const lastUpdated = new Date().toISOString();
+  const provider = getActiveStorageProvider();
 
-  if (isDevFileStorage()) {
+  if (provider === 'file') {
     const store = readDevFileStore();
     runPendingFileMigrations(store);
     if (!Array.isArray(store.inquiries)) {
@@ -243,43 +192,31 @@ export async function pushInquiry(inquiry: ContactInquiry): Promise<void> {
     return;
   }
 
-  try {
-    const db = await getDb();
-    await ensureMigrations(db);
-    const col = db.collection('cms_store');
-    await col.updateOne(
-      { _id: 'active_store' as any },
+  const db = getFirestoreDb();
+  const docRef = db.collection('cms_store').doc('active_store');
+  await db.runTransaction(async (t: import('firebase-admin/firestore').Transaction) => {
+    const snap = await t.get(docRef);
+    const existingInquiries = snap.exists && Array.isArray(snap.data()?.inquiries) ? snap.data()!.inquiries : [];
+    t.set(
+      docRef,
       {
-        $push: { inquiries: { $each: [inquiry], $position: 0 } as any },
-        $set: { lastUpdated },
+        inquiries: [inquiry, ...existingInquiries],
+        lastUpdated,
       },
-      { upsert: true }
+      { merge: true }
     );
-  } catch (mongoErr: any) {
-    console.warn('[store] pushInquiry failed to reach MongoDB, saving to fallback store:', mongoErr?.message || mongoErr);
-    try {
-      const store = readDevFileStore();
-      if (!Array.isArray(store.inquiries)) {
-        store.inquiries = [];
-      }
-      store.inquiries.unshift(inquiry);
-      store.lastUpdated = lastUpdated;
-      writeDevFileStore(store);
-    } catch (fallbackErr) {
-      console.error('[store] Fallback inquiry storage also failed:', fallbackErr);
-      throw mongoErr;
-    }
-  }
+  });
 }
 
 /**
- * Atomic inquiry update using arrayFilters (no read-modify-write).
+ * Atomic inquiry update in Firestore.
  */
 export async function updateInquiryById(id: string, updates: Partial<ContactInquiry>): Promise<boolean> {
   invalidateStoreCache('inquiries');
   const lastUpdated = new Date().toISOString();
+  const provider = getActiveStorageProvider();
 
-  if (isDevFileStorage()) {
+  if (provider === 'file') {
     const store = readDevFileStore();
     runPendingFileMigrations(store);
     const list = store.inquiries || [];
@@ -291,32 +228,31 @@ export async function updateInquiryById(id: string, updates: Partial<ContactInqu
     return true;
   }
 
-  const db = await getDb();
-  await ensureMigrations(db);
-  const col = db.collection('cms_store');
-
-  const setFields: Record<string, any> = { lastUpdated };
-  for (const [k, v] of Object.entries(updates)) {
-    setFields[`inquiries.$[elem].${k}`] = v;
-  }
-  setFields['inquiries.$[elem].updatedAt'] = lastUpdated;
-
-  const result = await col.updateOne(
-    { _id: 'active_store' as any },
-    { $set: setFields },
-    { arrayFilters: [{ 'elem.id': id }] }
-  );
-  return result.modifiedCount > 0;
+  const db = getFirestoreDb();
+  const docRef = db.collection('cms_store').doc('active_store');
+  let found = false;
+  await db.runTransaction(async (t: import('firebase-admin/firestore').Transaction) => {
+    const snap = await t.get(docRef);
+    if (!snap.exists) return;
+    const list = Array.isArray(snap.data()?.inquiries) ? [...snap.data()!.inquiries] : [];
+    const idx = list.findIndex((inq: any) => inq.id === id);
+    if (idx === -1) return;
+    list[idx] = { ...list[idx], ...updates, updatedAt: lastUpdated };
+    found = true;
+    t.set(docRef, { inquiries: list, lastUpdated }, { merge: true });
+  });
+  return found;
 }
 
 /**
- * Atomic inquiry deletion using $pull (no read-modify-write).
+ * Atomic inquiry deletion in Firestore.
  */
 export async function deleteInquiryById(id: string): Promise<boolean> {
   invalidateStoreCache('inquiries');
   const lastUpdated = new Date().toISOString();
+  const provider = getActiveStorageProvider();
 
-  if (isDevFileStorage()) {
+  if (provider === 'file') {
     const store = readDevFileStore();
     runPendingFileMigrations(store);
     const list = store.inquiries || [];
@@ -330,15 +266,18 @@ export async function deleteInquiryById(id: string): Promise<boolean> {
     return false;
   }
 
-  const db = await getDb();
-  await ensureMigrations(db);
-  const col = db.collection('cms_store');
-  const result = await col.updateOne(
-    { _id: 'active_store' as any },
-    {
-      $pull: { inquiries: { id } as any },
-      $set: { lastUpdated },
+  const db = getFirestoreDb();
+  const docRef = db.collection('cms_store').doc('active_store');
+  let removed = false;
+  await db.runTransaction(async (t: import('firebase-admin/firestore').Transaction) => {
+    const snap = await t.get(docRef);
+    if (!snap.exists) return;
+    const list = Array.isArray(snap.data()?.inquiries) ? snap.data()!.inquiries : [];
+    const filtered = list.filter((inq: any) => inq.id !== id);
+    if (filtered.length !== list.length) {
+      removed = true;
+      t.set(docRef, { inquiries: filtered, lastUpdated }, { merge: true });
     }
-  );
-  return result.modifiedCount > 0;
+  });
+  return removed;
 }

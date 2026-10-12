@@ -23,8 +23,8 @@ import { LeaveAMarkData } from '@/data/leave-a-mark';
 import { readKey, writeKey, pushInquiry, updateInquiryById, deleteInquiryById } from './store';
 import { hashPassword } from './auth';
 
-// Re-export MongoUnavailableError for callers and API handlers
-export { MongoUnavailableError } from './mongodb';
+// Re-export database unavailable errors for callers and API handlers
+export { FirebaseUnavailableError, DatabaseUnavailableError, MongoUnavailableError } from './firebase-admin';
 
 // ==================== PACKAGES OPERATIONS ====================
 
