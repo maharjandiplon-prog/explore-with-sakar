@@ -26,7 +26,7 @@ export default function CustomJourneysHubPage() {
             <div>
               <h2 className="font-editorial-serif text-xl font-bold text-slate-900">Custom Private Journeys</h2>
               <p className="text-sm text-slate-700 font-normal mt-1 leading-relaxed">
-                100% tailor-made itineraries for solo travelers, couples & families with Sakar. Manage this pillar's packages and offerings only.
+                100% tailor-made itineraries for solo travelers, couples & families with Sakar. Manage this pillar&apos;s packages and offerings only.
               </p>
               <div className="mt-3">
                 <Link href="/experiences/custom-journeys" target="_blank" className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border text-slate-800 bg-slate-100 border-slate-300 hover:bg-slate-200 transition-colors">

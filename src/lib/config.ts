@@ -18,17 +18,19 @@ export const SITE_NAME = 'Explore With Sakar';
 export function getCanonicalUrl(path: string = ''): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   if (cleanPath === '/') return `${SITE_ORIGIN}/`;
-  return `${SITE_ORIGIN}${cleanPath}`;
+  const trimmedPath = cleanPath.replace(/\/+$/, '');
+  return `${SITE_ORIGIN}${trimmedPath}`;
 }
 
 /**
  * Normalizes any canonical URL or path to always use the current SITE_ORIGIN.
  * Re-anchors internal domain variants (explorewithsakar.com, localhost, 127.0.0.1, Vercel preview)
  * to SITE_ORIGIN to guarantee 100% environment-consistent canonical and OG URLs.
+ * Strips non-canonical query strings and trailing slashes on sub-paths (matching Next.js trailingSlash: false).
  */
 export function normalizeCanonicalUrl(urlOrPath?: string, fallbackPath: string = '/'): string {
   const target = (urlOrPath || fallbackPath || '/').trim();
-  if (!target) return `${SITE_ORIGIN}/`;
+  if (!target || target === '/') return `${SITE_ORIGIN}/`;
 
   try {
     if (target.startsWith('http://') || target.startsWith('https://')) {
@@ -41,7 +43,7 @@ export function normalizeCanonicalUrl(urlOrPath?: string, fallbackPath: string =
         (process.env.VERCEL_URL && parsed.hostname === process.env.VERCEL_URL);
 
       if (isInternalHost) {
-        return getCanonicalUrl(parsed.pathname + parsed.search);
+        return getCanonicalUrl(parsed.pathname);
       }
       return target;
     }
@@ -49,5 +51,6 @@ export function normalizeCanonicalUrl(urlOrPath?: string, fallbackPath: string =
     // Fall back to treating as path
   }
 
-  return getCanonicalUrl(target);
+  const pathOnly = target.split('?')[0].split('#')[0];
+  return getCanonicalUrl(pathOnly);
 }

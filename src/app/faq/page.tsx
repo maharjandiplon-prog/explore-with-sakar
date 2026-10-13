@@ -3,6 +3,7 @@ import { Metadata } from 'next';
 import { buildPageMetadata } from '@/lib/seo';
 import { getPublicFaq } from '@/lib/content';
 import { SITE_ORIGIN } from '@/lib/config';
+import { safeJsonLd } from '@/lib/json-ld';
 import FAQClient from './FAQClient';
 
 const FALLBACK_METADATA: Metadata = {
@@ -14,6 +15,8 @@ const FALLBACK_METADATA: Metadata = {
 export async function generateMetadata(): Promise<Metadata> {
   return await buildPageMetadata('faq', FALLBACK_METADATA);
 }
+
+export const revalidate = 300;
 
 export default async function FAQPage() {
   const faqItems = await getPublicFaq();
@@ -36,7 +39,7 @@ export default async function FAQPage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(faqSchema) }}
       />
       <FAQClient initialFaq={faqItems} />
     </>

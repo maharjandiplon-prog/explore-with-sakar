@@ -14,6 +14,9 @@ import JournalCTA from '@/components/blog/JournalCTA';
 import RelatedStories from '@/components/blog/RelatedStories';
 import BlogFeaturedExperiences from '@/components/blog/BlogFeaturedExperiences';
 
+import { SITE_ORIGIN, getCanonicalUrl } from '@/lib/config';
+import { safeJsonLd } from '@/lib/json-ld';
+
 // ISR revalidation window: 5 minutes (300 seconds)
 export const revalidate = 300;
 
@@ -39,21 +42,35 @@ export async function generateMetadata({ params }: ArticlePageProps): Promise<Me
     };
   }
 
+  const canonicalUrl = getCanonicalUrl(`/blog/${post.slug}`);
+  const rawImage = post.featuredImage?.src || '/explore-with-sakar/images/mountains/sunrise-himalayas.jpg';
+  const ogImage = rawImage.startsWith('http') ? rawImage : `${SITE_ORIGIN}${rawImage}`;
+
   return {
     title: `${post.title} — Sakar's Journal | Explore With Sakar`,
     description: post.excerpt,
+    alternates: {
+      canonical: canonicalUrl,
+    },
     openGraph: {
-      title: post.title,
+      title: `${post.title} — Sakar's Journal | Explore With Sakar`,
       description: post.excerpt,
       type: 'article',
+      url: canonicalUrl,
       publishedTime: post.publishedAt,
       authors: [post.author?.name || 'Sakar'],
       images: [
         {
-          url: post.featuredImage?.src || '/explore-with-sakar/images/mountains/sunrise-himalayas.jpg',
+          url: ogImage,
           alt: post.featuredImage?.alt || post.title,
         },
       ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${post.title} — Sakar's Journal`,
+      description: post.excerpt,
+      images: [ogImage],
     },
   };
 }
@@ -120,6 +137,46 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
 
       {/* 5. Related Stories Reel */}
       <RelatedStories posts={relatedPosts} />
+
+      {/* JSON-LD Article Structured Data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: safeJsonLd({
+            '@context': 'https://schema.org',
+            '@type': 'Article',
+            mainEntityOfPage: {
+              '@type': 'WebPage',
+              '@id': getCanonicalUrl(`/blog/${post.slug}`),
+            },
+            headline: post.title,
+            description: post.excerpt,
+            image: [
+              post.featuredImage?.src
+                ? (post.featuredImage.src.startsWith('http')
+                    ? post.featuredImage.src
+                    : `${SITE_ORIGIN}${post.featuredImage.src}`)
+                : `${SITE_ORIGIN}/explore-with-sakar/images/mountains/sunrise-himalayas.jpg`,
+            ],
+            datePublished: post.publishedAt,
+            dateModified: post.updatedAt || post.publishedAt,
+            author: {
+              '@type': 'Person',
+              name: post.author?.name || 'Sakar',
+              jobTitle: post.author?.role || 'Responsible Tour Director & Cultural Guide',
+            },
+            publisher: {
+              '@type': 'Organization',
+              name: 'Explore With Sakar',
+              url: SITE_ORIGIN,
+              logo: {
+                '@type': 'ImageObject',
+                url: `${SITE_ORIGIN}/explore-with-sakar/images/logo.png`,
+              },
+            },
+          }),
+        }}
+      />
     </article>
   );
 }

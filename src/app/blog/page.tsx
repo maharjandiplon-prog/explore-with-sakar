@@ -15,6 +15,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return await buildPageMetadata('blog', FALLBACK_METADATA);
 }
 
+export const revalidate = 300;
+
 export default async function BlogPage() {
   const [blogs, topExperiences] = await Promise.all([
     getPublicBlogs(),

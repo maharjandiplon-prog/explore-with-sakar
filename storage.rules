@@ -1,0 +1,10 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Deny all direct client-side reads and writes from Web/Mobile SDKs.
+    // Uploads are handled exclusively via /api/upload using the Firebase Admin SDK.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

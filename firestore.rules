@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Deny all direct client-side reads and writes from Web/Mobile SDKs.
+    // The application interacts with Firestore exclusively via the Firebase Admin SDK
+    // running in Next.js Server Components and Route Handlers.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

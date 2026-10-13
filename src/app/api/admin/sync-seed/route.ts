@@ -57,7 +57,9 @@ export async function POST(req: NextRequest) {
     // default: sync blogs and experiences
   }
 
-  const fieldsToSync: string[] = body.fields || ['blogs', 'experiences'];
+  const FORBIDDEN_FIELDS = new Set(['inquiries', 'admin', 'gsc_auth']);
+  const rawFields: string[] = body.fields || ['blogs', 'experiences'];
+  const fieldsToSync = rawFields.filter((f) => !FORBIDDEN_FIELDS.has(f));
   const force = Boolean(body.force);
 
   const report: Record<string, any> = {};

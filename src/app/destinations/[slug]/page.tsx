@@ -7,6 +7,9 @@ import { getPublicDestinationBySlug, getPublicDestinations, getPublicEvents } fr
 import { MapPin, Mountain, Check, ArrowLeft } from 'lucide-react';
 import InquiryForm from '@/components/booking/InquiryForm';
 
+import { SITE_ORIGIN, getCanonicalUrl } from '@/lib/config';
+import { safeJsonLd } from '@/lib/json-ld';
+
 interface Props {
   params: { slug: string };
 }
@@ -18,9 +21,33 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     return { title: 'Destination Not Found | Explore With Sakar' };
   }
   
+  const canonicalUrl = getCanonicalUrl(`/destinations/${destination.slug || destination.id}`);
+  const rawImage = destination.image?.src || '/explore-with-sakar/images/mountains/sunrise-himalayas.jpg';
+  const ogImage = rawImage.startsWith('http') ? rawImage : `${SITE_ORIGIN}${rawImage}`;
+
   return {
     title: `${destination.name} | Explore With Sakar`,
     description: destination.description,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title: `${destination.name} | Explore With Sakar`,
+      description: destination.description,
+      url: canonicalUrl,
+      images: [
+        {
+          url: ogImage,
+          alt: destination.image?.alt || destination.name,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${destination.name} | Explore With Sakar`,
+      description: destination.description,
+      images: [ogImage],
+    },
   };
 }
 
@@ -30,6 +57,8 @@ export async function generateStaticParams() {
     slug: dest.slug || dest.id,
   }));
 }
+
+export const revalidate = 300;
 
 export default async function DestinationDetailPage({ params }: Props) {
   const [destination, events] = await Promise.all([
@@ -165,6 +194,31 @@ export default async function DestinationDetailPage({ params }: Props) {
       </div>
 
       <InquiryForm availableEvents={availableEvents} />
+
+      {/* JSON-LD TouristDestination Structured Data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: safeJsonLd({
+            '@context': 'https://schema.org',
+            '@type': 'TouristDestination',
+            name: destination.name,
+            description: destination.description,
+            url: getCanonicalUrl(`/destinations/${destination.slug || destination.id}`),
+            image: [
+              destination.image?.src
+                ? (destination.image.src.startsWith('http')
+                    ? destination.image.src
+                    : `${SITE_ORIGIN}${destination.image.src}`)
+                : `${SITE_ORIGIN}/explore-with-sakar/images/mountains/sunrise-himalayas.jpg`,
+            ],
+            containedInPlace: {
+              '@type': 'Country',
+              name: 'Nepal',
+            },
+          }),
+        }}
+      />
     </div>
   );
 }

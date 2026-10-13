@@ -53,3 +53,4 @@ next-env.d.ts
 /topoexport*
 /.firebase/
 /backups/
+/data/backups/

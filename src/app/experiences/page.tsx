@@ -32,6 +32,8 @@ export const metadata: Metadata = {
   },
 };
 
+export const revalidate = 300;
+
 const CORE_PILLARS = [
   {
     title: 'Go Beyond the Map',
@@ -71,225 +73,106 @@ const CORE_PILLARS = [
   },
 ];
 
-interface ExperiencesPageProps {
-  searchParams?: {
-    category?: string;
-  };
-}
-
-const CATEGORY_META: Record<
-  string,
-  {
-    title: string;
-    nepaliTitle: string;
-    badge: string;
-    subtitle: string;
-    image: string;
-    breadcrumbLabel: string;
-    categoryFilter: string[];
-  }
-> = {
-  'beyond-the-map': {
-    title: 'Go Beyond the Map — All Curated Topics',
-    nepaliTitle: 'नक्साभन्दा परका कथाहरू',
-    badge: 'Exploration & Living Heritage',
-    subtitle: 'Explore all signature itineraries: living courtyards, medieval stone mysteries, master artisan guilds, and unhurried journeys.',
-    image: '/images/beyond-the-map/living-courtyards.jpg',
-    breadcrumbLabel: 'Go Beyond the Map',
-    categoryFilter: ['beyond-the-map', 'go-beyond', 'adventure', 'heritage'],
-  },
-  'go-within': {
-    title: 'Go Within — All Curated Topics',
-    nepaliTitle: 'आध्यात्मिक शान्ति र अन्तर्यात्रा',
-    badge: 'Himalayan Sound & Mountain Silence',
-    subtitle: '7-metal singing bowl resonance, dawn monastery chanting, sacred caves, and contemplative journeys.',
-    image: '/explore-with-sakar/images/spiritual/buddhist-stupa.jpg',
-    breadcrumbLabel: 'Go Within',
-    categoryFilter: ['go-within', 'spiritual-wellness', 'spiritual', 'go-spiritual'],
-  },
-  'spiritual-wellness': {
-    title: 'Go Within — All Curated Topics',
-    nepaliTitle: 'आध्यात्मिक शान्ति र अन्तर्यात्रा',
-    badge: 'Himalayan Sound & Mountain Silence',
-    subtitle: '7-metal singing bowl resonance, dawn monastery chanting, sacred caves, and contemplative journeys.',
-    image: '/explore-with-sakar/images/spiritual/buddhist-stupa.jpg',
-    breadcrumbLabel: 'Go Within',
-    categoryFilter: ['go-within', 'spiritual-wellness', 'spiritual', 'go-spiritual'],
-  },
-  'go-deeper': {
-    title: 'Go Deeper — All Curated Topics',
-    nepaliTitle: 'गहिरो अनुसन्धान',
-    badge: 'Immersive Deep-Dive',
-    subtitle: "Immersive deep-dive journeys into Nepal's hidden layers and living traditions beyond the surface.",
-    image: '/explore-with-sakar/images/mountains/alpine-valley.jpg',
-    breadcrumbLabel: 'Go Deeper',
-    categoryFilter: ['go-deeper'],
-  },
-  'homestays': {
-    title: 'Feel Closer — All Homestays',
-    nepaliTitle: 'आत्मीय बसाइ',
-    badge: 'Village Homestay & Living Hearth',
-    subtitle: 'Stay with local mountain families, share hearthside meals, and experience rural community life.',
-    image: '/explore-with-sakar/images/homestays/village-meal.jpg',
-    breadcrumbLabel: 'Homestays',
-    categoryFilter: ['homestays', 'homestay', 'feel-closer'],
-  },
-  'leave-a-mark': {
-    title: 'Leave a Mark — Strategic Impact Journeys',
-    nepaliTitle: 'सकारात्मक प्रभाव',
-    badge: 'Strategic Community Impact',
-    subtitle: 'Matching your actual professional skills with local communities in Nepal that need structural and administrative empowerment.',
-    image: '/explore-with-sakar/images/trails/river-gorge.jpg',
-    breadcrumbLabel: 'Leave a Mark',
-    categoryFilter: ['leave-a-mark', 'responsible'],
-  },
-};
-
-const normalizeCategoryKey = (cat?: string | null): string | null => {
-  if (!cat) return null;
-  const lower = cat.toLowerCase().trim();
-  if (lower === 'all') return null;
-  if (lower === 'beyond-the-map' || lower === 'go-beyond') return 'beyond-the-map';
-  if (lower === 'spiritual-wellness' || lower === 'go-within' || lower === 'go-spiritual') return 'go-within';
-  if (lower === 'go-deeper') return 'go-deeper';
-  if (lower === 'homestays' || lower === 'feel-closer' || lower === 'homestay') return 'homestays';
-  if (lower === 'leave-a-mark' || lower === 'responsible') return 'leave-a-mark';
-  return lower;
-};
-
-export default async function ExperiencesLandingPage({ searchParams }: ExperiencesPageProps) {
+export default async function ExperiencesLandingPage() {
   const experiences = await getPublicExperiences();
-  const rawCategory = searchParams?.category;
-  const activeCategoryKey = normalizeCategoryKey(rawCategory);
-  const isFiltered = Boolean(activeCategoryKey && CATEGORY_META[activeCategoryKey]);
-  const categoryMeta = isFiltered && activeCategoryKey ? CATEGORY_META[activeCategoryKey] : null;
 
-  const catalogExperiences = experiences
-    .filter((exp) => {
-      if (!isFiltered || !categoryMeta) return true;
-      return categoryMeta.categoryFilter.includes(exp.category);
-    })
-    .map((exp) => ({
-      id: exp.id,
-      slug: exp.slug,
-      title: exp.title,
-      category: exp.category,
-      categoryLabel: exp.categoryLabel,
-      featured: exp.featured,
-      duration: exp.duration,
-      location: exp.location,
-      shortDescription: exp.shortDescription,
-      groupSize: exp.groupSize,
-      heroImage: exp.heroImage ? { src: exp.heroImage.src, alt: exp.heroImage.alt } : undefined,
-    }));
+  const catalogExperiences = experiences.map((exp) => ({
+    id: exp.id,
+    slug: exp.slug,
+    title: exp.title,
+    category: exp.category,
+    categoryLabel: exp.categoryLabel,
+    featured: exp.featured,
+    duration: exp.duration,
+    location: exp.location,
+    shortDescription: exp.shortDescription,
+    groupSize: exp.groupSize,
+    heroImage: exp.heroImage ? { src: exp.heroImage.src, alt: exp.heroImage.alt } : undefined,
+  }));
 
   return (
     <div className="min-h-screen bg-parchment-100">
-      {/* 1. Page Hero (Dynamically tailored if filtered) */}
+      {/* 1. Page Hero */}
       <PageHero
-        badge={categoryMeta ? categoryMeta.badge : "Independent Experience Packages"}
-        nepaliTitle={categoryMeta ? categoryMeta.nepaliTitle : "हाम्रा विशेष यात्राहरू"}
-        title={categoryMeta ? categoryMeta.title : "Experiences Designed for Connection"}
-        subtitle={categoryMeta ? categoryMeta.subtitle : "Every experience is an independent journey into the living soul of Nepal. Choose a core pillar below or explore our curated day-by-day departures."}
-        backgroundImage={categoryMeta ? categoryMeta.image : "/explore-with-sakar/images/mountains/sunrise-himalayas.jpg"}
-        breadcrumbs={
-          categoryMeta
-            ? [{ label: 'Experiences', href: '/experiences' }, { label: categoryMeta.breadcrumbLabel }]
-            : [{ label: 'Experiences' }]
-        }
+        badge="Independent Experience Packages"
+        nepaliTitle="हाम्रा विशेष यात्राहरू"
+        title="Experiences Designed for Connection"
+        subtitle="Every experience is an independent journey into the living soul of Nepal. Choose a core pillar below or explore our curated day-by-day departures."
+        backgroundImage="/explore-with-sakar/images/mountains/sunrise-himalayas.jpg"
+        breadcrumbs={[{ label: 'Experiences' }]}
       />
 
-      {/* Filter notice banner when category is active */}
-      {isFiltered && categoryMeta && (
-        <div className="bg-sand border-b border-parchment-300 py-3.5">
-          <div className="editorial-container flex flex-wrap items-center justify-between gap-3">
-            <span className="text-xs sm:text-sm font-semibold text-himalaya-950">
-              Showing all {catalogExperiences.length} curated itineraries in <strong>{categoryMeta.breadcrumbLabel}</strong>
+      {/* 2. Core Experience Pillars Showcase */}
+      <section className="py-16 sm:py-24 bg-white border-b border-parchment-300">
+        <div className="editorial-container">
+          <div className="max-w-3xl mb-12">
+            <span className="text-xs font-mono uppercase tracking-widest font-bold text-terracotta">
+              Core Pillars of Travel
             </span>
-            <Link
-              href="/experiences"
-              className="inline-flex items-center text-xs font-bold text-terracotta hover:text-terracotta-dark uppercase tracking-wider"
-            >
-              <span>View All Experience Pillars</span>
-              <ArrowRight className="w-3.5 h-3.5 ml-1" />
-            </Link>
+            <h2 className="font-editorial-serif text-3xl sm:text-4xl font-bold text-himalaya-950 mt-1">
+              Four Distinct Ways to Experience Nepal
+            </h2>
+            <p className="text-sm sm:text-base text-himalaya-600 font-light mt-2 leading-relaxed">
+              We do not believe in one-size-fits-all sightseeing. Each experience has its own dedicated philosophy, host relationships, and sensory character.
+            </p>
           </div>
-        </div>
-      )}
 
-      {/* 2. Core Experience Pillars Showcase (ONLY shown when no category filter is active) */}
-      {!isFiltered && (
-        <section className="py-16 sm:py-24 bg-white border-b border-parchment-300">
-          <div className="editorial-container">
-            <div className="max-w-3xl mb-12">
-              <span className="text-xs font-mono uppercase tracking-widest font-bold text-terracotta">
-                Core Pillars of Travel
-              </span>
-              <h2 className="font-editorial-serif text-3xl sm:text-4xl font-bold text-himalaya-950 mt-1">
-                Four Distinct Ways to Experience Nepal
-              </h2>
-              <p className="text-sm sm:text-base text-himalaya-600 font-light mt-2 leading-relaxed">
-                We do not believe in one-size-fits-all sightseeing. Each experience has its own dedicated philosophy, host relationships, and sensory character.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {CORE_PILLARS.map((pillar) => {
-                const Icon = pillar.icon;
-                return (
-                  <div
-                    key={pillar.href}
-                    className="group bg-parchment-50 border border-parchment-300 rounded-3xl overflow-hidden shadow-subtle hover:shadow-editorial transition-all duration-300 flex flex-col justify-between"
-                  >
-                    <div className="relative aspect-[16/10] overflow-hidden bg-himalaya-900">
-                      <Image
-                        src={pillar.image}
-                        alt={pillar.title}
-                        fill
-                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                        className="object-cover group-hover:scale-105 transition-transform duration-700"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-himalaya-950/80 via-transparent to-transparent" />
-                      <div className="absolute top-4 left-4">
-                        <span className="px-3 py-1 rounded-full bg-white/90 backdrop-blur-sm text-himalaya-950 text-[10px] font-bold uppercase tracking-wider">
-                          {pillar.badge}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="p-6 sm:p-8 flex-1 flex flex-col justify-between space-y-4">
-                      <div>
-                        <div className="flex items-center space-x-2 text-terracotta mb-2">
-                          <Icon className="w-4 h-4" />
-                          <span className="text-xs font-mono uppercase font-bold tracking-wider">
-                            {pillar.subtitle}
-                          </span>
-                        </div>
-                        <h3 className="font-editorial-serif text-2xl font-bold text-himalaya-950 group-hover:text-terracotta transition-colors">
-                          {pillar.title}
-                        </h3>
-                        <p className="text-xs sm:text-sm text-himalaya-600 font-light mt-2 leading-relaxed">
-                          {pillar.description}
-                        </p>
-                      </div>
-
-                      <div className="pt-4 border-t border-parchment-200">
-                        <Link
-                          href={pillar.href}
-                          className="inline-flex items-center text-xs font-bold uppercase tracking-widest text-himalaya-950 group-hover:text-terracotta transition-colors"
-                        >
-                          <span>Explore Experience</span>
-                          <ArrowRight className="w-3.5 h-3.5 ml-1.5 group-hover:translate-x-1 transition-transform" />
-                        </Link>
-                      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {CORE_PILLARS.map((pillar) => {
+              const Icon = pillar.icon;
+              return (
+                <div
+                  key={pillar.href}
+                  className="group bg-parchment-50 border border-parchment-300 rounded-3xl overflow-hidden shadow-subtle hover:shadow-editorial transition-all duration-300 flex flex-col justify-between"
+                >
+                  <div className="relative aspect-[16/10] overflow-hidden bg-himalaya-900">
+                    <Image
+                      src={pillar.image}
+                      alt={pillar.title}
+                      fill
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                      className="object-cover group-hover:scale-105 transition-transform duration-700"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-himalaya-950/80 via-transparent to-transparent" />
+                    <div className="absolute top-4 left-4">
+                      <span className="px-3 py-1 rounded-full bg-white/90 backdrop-blur-sm text-himalaya-950 text-[10px] font-bold uppercase tracking-wider">
+                        {pillar.badge}
+                      </span>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+
+                  <div className="p-6 sm:p-8 flex-1 flex flex-col justify-between space-y-4">
+                    <div>
+                      <div className="flex items-center space-x-2 text-terracotta mb-2">
+                        <Icon className="w-4 h-4" />
+                        <span className="text-xs font-mono uppercase font-bold tracking-wider">
+                          {pillar.subtitle}
+                        </span>
+                      </div>
+                      <h3 className="font-editorial-serif text-2xl font-bold text-himalaya-950 group-hover:text-terracotta transition-colors">
+                        {pillar.title}
+                      </h3>
+                      <p className="text-xs sm:text-sm text-himalaya-600 font-light mt-2 leading-relaxed">
+                        {pillar.description}
+                      </p>
+                    </div>
+
+                    <div className="pt-4 border-t border-parchment-200">
+                      <Link
+                        href={pillar.href}
+                        className="inline-flex items-center text-xs font-bold uppercase tracking-widest text-himalaya-950 group-hover:text-terracotta transition-colors"
+                      >
+                        <span>Explore Experience</span>
+                        <ArrowRight className="w-3.5 h-3.5 ml-1.5 group-hover:translate-x-1 transition-transform" />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
       {/* 3. Interactive Catalog (Paginated: 12 per page) */}
       <Suspense fallback={<div className="py-20 text-center text-terracotta">Loading catalog...</div>}>

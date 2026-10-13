@@ -20,11 +20,12 @@ import CTASection from '@/components/common/CTASection';
 import { TRAVEL_RESOURCES } from '@/data/resources';
 import { getPageContent } from '@/lib/content';
 import { getPageHeroOverrides, isSectionVisible } from '@/lib/pageContentHelper';
+import { SITE_ORIGIN } from '@/lib/config';
 
 const FALLBACK_METADATA: Metadata = {
   title: 'Nepal Travel Resources & Guide | Explore With Sakar',
   description: 'Essential travel advice for visiting Nepal: best seasons & climate, visa & entry, cultural etiquette, packing checklist, altitude safety, and SIM connectivity.',
-  alternates: { canonical: 'https://explorewithsakar.com/resources' },
+  alternates: { canonical: `${SITE_ORIGIN}/resources` },
 };
 
 export async function generateMetadata(): Promise<Metadata> {

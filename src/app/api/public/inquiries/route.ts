@@ -1,109 +1,204 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createInquiry, getAllEvents } from '@/lib/db';
+import { checkRateLimit, recordFailedAttempt, getClientIp } from '@/lib/rate-limit';
 
-function sanitize(str: unknown): string {
-  if (typeof str !== 'string') return '';
-  return str.replace(/<[^>]*>?/gm, '').trim();
-}
+const MAX_BODY_SIZE_BYTES = 51200; // 50 KB hard cap
+
+const InquirySchema = z.object({
+  fullName: z
+    .string()
+    .trim()
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name is too long')
+    .transform((val) => val.replace(/<[^>]*>?/gm, '')),
+  email: z
+    .string()
+    .trim()
+    .email('Please enter a valid email address')
+    .max(150, 'Email is too long'),
+  phone: z
+    .string()
+    .trim()
+    .max(30, 'Phone is too long')
+    .optional()
+    .transform((val) => (val ? val.replace(/<[^>]*>?/gm, '') : undefined)),
+  whatsapp: z
+    .string()
+    .trim()
+    .max(30, 'WhatsApp is too long')
+    .optional()
+    .transform((val) => (val ? val.replace(/<[^>]*>?/gm, '') : undefined)),
+  country: z
+    .string()
+    .trim()
+    .max(60, 'Country is too long')
+    .optional()
+    .transform((val) => (val ? val.replace(/<[^>]*>?/gm, '') : undefined)),
+  travelDates: z
+    .string()
+    .trim()
+    .max(100, 'Travel dates field is too long')
+    .optional()
+    .transform((val) => (val ? val.replace(/<[^>]*>?/gm, '') : undefined)),
+  approximateDuration: z
+    .string()
+    .trim()
+    .max(50, 'Duration is too long')
+    .optional()
+    .transform((val) => (val ? val.replace(/<[^>]*>?/gm, '') : undefined)),
+  travelersCount: z
+    .string()
+    .trim()
+    .max(50, 'Party size is too long')
+    .optional()
+    .transform((val) => (val ? val.replace(/<[^>]*>?/gm, '') : undefined)),
+  travelStyle: z
+    .string()
+    .trim()
+    .max(100, 'Travel style is too long')
+    .optional()
+    .transform((val) => (val ? val.replace(/<[^>]*>?/gm, '') : undefined)),
+  homestayInterest: z
+    .string()
+    .trim()
+    .max(100, 'Homestay interest is too long')
+    .optional()
+    .transform((val) => (val ? val.replace(/<[^>]*>?/gm, '') : undefined)),
+  preferredInterests: z
+    .array(z.string().trim().max(80).transform((val) => val.replace(/<[^>]*>?/gm, '')))
+    .max(20)
+    .optional()
+    .default([]),
+  message: z
+    .string()
+    .trim()
+    .max(2000, 'Message cannot exceed 2000 characters')
+    .optional()
+    .default('')
+    .transform((val) => val.replace(/<[^>]*>?/gm, '')),
+  interestedEventId: z
+    .string()
+    .trim()
+    .max(50)
+    .optional(),
+  interestedEvent: z
+    .object({
+      id: z.string().trim().max(50).optional(),
+      title: z.string().trim().max(100).optional(),
+    })
+    .optional(),
+  // Honeypot field: real users never fill this
+  website: z.string().optional(),
+});
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => null);
-    if (!body || typeof body !== 'object') {
-      return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+    // 1. Enforce strict request body size limit
+    const contentLength = req.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE_BYTES) {
+      return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
     }
 
-    // Honeypot: real users never fill this hidden field
-    if (body.website) {
+    // 2. Serverless Rate Limiting (5 inquiries per hour per IP)
+    const ip = getClientIp(req.headers);
+    const rateLimitKey = `inquiry_${ip.replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+
+    const rateCheck = await checkRateLimit(rateLimitKey, 5, 3600);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Too many inquiries submitted from this connection. Please try again later.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(rateCheck.retryAfterSeconds),
+          },
+        }
+      );
+    }
+
+    // 3. Preview Safety Check
+    if (process.env.VERCEL_ENV === 'preview' && process.env.ALLOW_PREVIEW_WRITES !== 'true') {
+      return NextResponse.json(
+        { error: 'Forbidden: Inquiry submissions are disabled in Vercel Preview environment' },
+        { status: 403 }
+      );
+    }
+
+    const rawBody = await req.json().catch(() => null);
+    if (!rawBody || typeof rawBody !== 'object') {
+      return NextResponse.json({ error: 'Invalid request payload' }, { status: 400 });
+    }
+
+    // 3. Honeypot check: silently succeed and drop bot submissions
+    if (rawBody.website) {
       return NextResponse.json({
         success: true,
         message: 'Namaste! Your inquiry has been received. Sakar will contact you personally soon.',
-      }); // silently drop bots
+      });
     }
 
-    const clip = (v: unknown, max: number) =>
-      String(v ?? '')
-        .replace(/<[^>]*>?/gm, '')
-        .trim()
-        .slice(0, max);
-
-    const fullName = clip(body.fullName, 100);
-    const email = clip(body.email, 150);
-    const phone = clip(body.phone || body.whatsapp, 30);
-    const country = clip(body.country, 60);
-    const travelDates = clip(body.travelDates, 100);
-    const approximateDuration = clip(body.approximateDuration, 50);
-    const travelersCount = clip(body.travelersCount, 50);
-    const travelStyle = clip(body.travelStyle, 100);
-    const homestayInterest = clip(body.homestayInterest, 100);
-    let message = clip(body.message, 2000);
-
-    // If message is omitted or too short, construct a helpful default summary if dates/details provided
-    if (!message && (travelDates || approximateDuration || travelersCount)) {
-      message = `Custom journey inquiry from ${fullName}.${travelDates ? ` Dates: ${travelDates}.` : ''}${
-        approximateDuration ? ` Duration: ${approximateDuration}.` : ''
-      }${travelersCount ? ` Party: ${travelersCount}.` : ''}`;
-    }
-
-    // Validation
-    if (!fullName || !message) {
+    // 4. Strict Zod Schema Validation
+    const parsed = InquirySchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
       return NextResponse.json(
-        { error: 'Name and message are required' },
+        { error: issue?.message || 'Invalid form input' },
         { status: 400 }
       );
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email || !emailRegex.test(email)) {
+    const data = parsed.data;
+
+    let finalMessage = data.message;
+    if (!finalMessage && (data.travelDates || data.approximateDuration || data.travelersCount)) {
+      finalMessage = `Custom journey inquiry from ${data.fullName}.${
+        data.travelDates ? ` Dates: ${data.travelDates}.` : ''
+      }${data.approximateDuration ? ` Duration: ${data.approximateDuration}.` : ''}${
+        data.travelersCount ? ` Party: ${data.travelersCount}.` : ''
+      }`;
+    }
+
+    if (!finalMessage || finalMessage.length < 5) {
       return NextResponse.json(
-        { error: 'Please enter a valid email address.' },
+        { error: 'Please include a message describing your travel plans.' },
         { status: 400 }
       );
     }
 
-    const preferredInterests: string[] = Array.isArray(body.preferredInterests)
-      ? body.preferredInterests
-          .map((item: unknown) => clip(item, 80))
-          .filter(Boolean)
-          .slice(0, 20)
-      : [];
-
+    // 5. Validate interested event if provided
     let interestedEvent: { id: string; title: string } | undefined = undefined;
-    const reqEventId = typeof body.interestedEventId === 'string'
-      ? clip(body.interestedEventId, 50)
-      : (body.interestedEvent && typeof body.interestedEvent.id === 'string'
-          ? clip(body.interestedEvent.id, 50)
-          : '');
-
-    if (reqEventId) {
+    const eventId = data.interestedEventId || data.interestedEvent?.id;
+    if (eventId) {
       try {
         const events = await getAllEvents(false);
-        const matched = (events || []).find((e) => e.id === reqEventId && e.isVisible !== false);
+        const matched = (events || []).find((e) => e.id === eventId && e.isVisible !== false);
         if (matched) {
-          interestedEvent = {
-            id: matched.id,
-            title: matched.title,
-          };
+          interestedEvent = { id: matched.id, title: matched.title };
         }
       } catch (err) {
         console.warn('Could not validate event for inquiry:', err);
       }
     }
 
+    // 6. Persist to isolated cms_inquiries collection
     const newInquiry = await createInquiry({
-      fullName,
-      email,
-      whatsapp: phone || undefined,
-      country: country || undefined,
-      travelDates: travelDates || undefined,
-      approximateDuration: approximateDuration || undefined,
-      travelersCount: travelersCount || undefined,
-      travelStyle: travelStyle || undefined,
-      preferredInterests,
-      homestayInterest: homestayInterest || undefined,
-      message,
+      fullName: data.fullName,
+      email: data.email,
+      whatsapp: data.whatsapp || data.phone || undefined,
+      country: data.country || undefined,
+      travelDates: data.travelDates || undefined,
+      approximateDuration: data.approximateDuration || undefined,
+      travelersCount: data.travelersCount || undefined,
+      travelStyle: data.travelStyle || undefined,
+      preferredInterests: data.preferredInterests,
+      homestayInterest: data.homestayInterest || undefined,
+      message: finalMessage,
       interestedEvent,
     });
+
+    // Count against rate limit on valid submission
+    await recordFailedAttempt(rateLimitKey, 3600);
 
     return NextResponse.json(
       {
@@ -114,13 +209,8 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (error: any) {
-    if (error.name === 'MongoUnavailableError') {
-      return NextResponse.json(
-        { error: 'Database unavailable. Change was not saved.' },
-        { status: 503 }
-      );
-    }
-    console.error('Inquiry submission error:', error);
+    console.error('Inquiry submission error:', error?.message || error);
+    // Generic error returned to client - no internal stack or database details leaked
     return NextResponse.json(
       { error: 'Something went wrong submitting your inquiry. Please try again or message Sakar directly on WhatsApp.' },
       { status: 500 }

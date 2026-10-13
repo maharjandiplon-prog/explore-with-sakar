@@ -40,7 +40,7 @@ export async function PATCH(
 
     return NextResponse.json({ success: true, inquiry: updated });
   } catch (error: any) {
-    if (error?.name === 'MongoUnavailableError') {
+    if (error?.name === 'FirebaseUnavailableError' || error?.name === 'MongoUnavailableError') {
       return NextResponse.json({ error: 'Database unavailable. Change was not saved.' }, { status: 503 });
     }
     return NextResponse.json({ error: 'Failed to update inquiry' }, { status: 500 });
@@ -63,7 +63,7 @@ export async function DELETE(
     }
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    if (error?.name === 'MongoUnavailableError') {
+    if (error?.name === 'FirebaseUnavailableError' || error?.name === 'MongoUnavailableError') {
       return NextResponse.json({ error: 'Database unavailable. Change was not saved.' }, { status: 503 });
     }
     return NextResponse.json({ error: 'Failed to delete inquiry' }, { status: 500 });

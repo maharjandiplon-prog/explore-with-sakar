@@ -20,7 +20,7 @@ import {
   CmsBrandPartner,
 } from '@/types/cms';
 import { LeaveAMarkData } from '@/data/leave-a-mark';
-import { readKey, writeKey, pushInquiry, updateInquiryById, deleteInquiryById } from './store';
+import { readKey, writeKey, pushInquiry, updateInquiryById, deleteInquiryById, runTransactionalArrayMutation } from './store';
 import { hashPassword } from './auth';
 
 // Re-export database unavailable errors for callers and API handlers
@@ -219,55 +219,60 @@ export async function getAllPhotos(): Promise<ExtendedGalleryPhoto[]> {
 export async function createPhoto(
   photoData: Omit<ExtendedGalleryPhoto, 'id' | 'createdAt' | 'updatedAt' | 'order'>
 ): Promise<ExtendedGalleryPhoto> {
-  const list = (await readKey<ExtendedGalleryPhoto[]>('photos')) || [];
-  const now = new Date().toISOString();
-  const newPhoto: ExtendedGalleryPhoto = {
-    ...photoData,
-    id: `photo-${Date.now()}`,
-    order: list.length,
-    createdAt: now,
-    updatedAt: now,
-  };
-  list.push(newPhoto);
-  await writeKey('photos', list);
-  return newPhoto;
+  let created: ExtendedGalleryPhoto | null = null;
+  await runTransactionalArrayMutation<ExtendedGalleryPhoto>('photos', (list) => {
+    const now = new Date().toISOString();
+    const newPhoto: ExtendedGalleryPhoto = {
+      ...photoData,
+      id: `photo-${Date.now()}`,
+      order: list.length,
+      createdAt: now,
+      updatedAt: now,
+    };
+    created = newPhoto;
+    return [...list, newPhoto];
+  });
+  return created!;
 }
 
 export async function updatePhoto(id: string, updates: Partial<ExtendedGalleryPhoto>): Promise<ExtendedGalleryPhoto | null> {
-  const list = (await readKey<ExtendedGalleryPhoto[]>('photos')) || [];
-  const index = list.findIndex((p) => p.id === id);
-  if (index === -1) return null;
-
-  list[index] = {
-    ...list[index],
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  };
-  await writeKey('photos', list);
-  return list[index];
+  let updated: ExtendedGalleryPhoto | null = null;
+  await runTransactionalArrayMutation<ExtendedGalleryPhoto>('photos', (list) => {
+    const index = list.findIndex((p) => p.id === id);
+    if (index === -1) return list;
+    const item = {
+      ...list[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    updated = item;
+    const next = [...list];
+    next[index] = item;
+    return next;
+  });
+  return updated;
 }
 
 export async function deletePhoto(id: string): Promise<boolean> {
-  const list = (await readKey<ExtendedGalleryPhoto[]>('photos')) || [];
-  const index = list.findIndex((p) => p.id === id);
-  if (index !== -1) {
-    list.splice(index, 1);
-    await writeKey('photos', list);
-    return true;
-  }
-  return false;
+  let deleted = false;
+  await runTransactionalArrayMutation<ExtendedGalleryPhoto>('photos', (list) => {
+    const index = list.findIndex((p) => p.id === id);
+    if (index === -1) return list;
+    deleted = true;
+    return list.filter((p) => p.id !== id);
+  });
+  return deleted;
 }
 
 export async function reorderPhotos(photoIds: string[]): Promise<boolean> {
-  const list = (await readKey<ExtendedGalleryPhoto[]>('photos')) || [];
-  const orderMap = new Map(photoIds.map((id, index) => [id, index]));
-  for (const photo of list) {
-    if (orderMap.has(photo.id)) {
-      photo.order = orderMap.get(photo.id)!;
-    }
-  }
-  list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  await writeKey('photos', list);
+  await runTransactionalArrayMutation<ExtendedGalleryPhoto>('photos', (list) => {
+    const orderMap = new Map(photoIds.map((id, index) => [id, index]));
+    const next = list.map((photo) => ({
+      ...photo,
+      order: orderMap.has(photo.id) ? orderMap.get(photo.id)! : photo.order,
+    }));
+    return next.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  });
   return true;
 }
 
@@ -287,43 +292,49 @@ export async function getAllReviews(onlyApproved = false): Promise<ExtendedTesti
 export async function createReview(
   reviewData: Omit<ExtendedTestimonial, 'id' | 'createdAt' | 'updatedAt' | 'order'>
 ): Promise<ExtendedTestimonial> {
-  const list = (await readKey<ExtendedTestimonial[]>('reviews')) || [];
-  const now = new Date().toISOString();
-  const newReview: ExtendedTestimonial = {
-    ...reviewData,
-    id: `review-${Date.now()}`,
-    order: list.length,
-    createdAt: now,
-    updatedAt: now,
-  };
-  list.push(newReview);
-  await writeKey('reviews', list);
-  return newReview;
+  let created: ExtendedTestimonial | null = null;
+  await runTransactionalArrayMutation<ExtendedTestimonial>('reviews', (list) => {
+    const now = new Date().toISOString();
+    const newReview: ExtendedTestimonial = {
+      ...reviewData,
+      id: `review-${Date.now()}`,
+      order: list.length,
+      createdAt: now,
+      updatedAt: now,
+    };
+    created = newReview;
+    return [...list, newReview];
+  });
+  return created!;
 }
 
 export async function updateReview(id: string, updates: Partial<ExtendedTestimonial>): Promise<ExtendedTestimonial | null> {
-  const list = (await readKey<ExtendedTestimonial[]>('reviews')) || [];
-  const index = list.findIndex((r) => r.id === id);
-  if (index === -1) return null;
-
-  list[index] = {
-    ...list[index],
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  };
-  await writeKey('reviews', list);
-  return list[index];
+  let updated: ExtendedTestimonial | null = null;
+  await runTransactionalArrayMutation<ExtendedTestimonial>('reviews', (list) => {
+    const index = list.findIndex((r) => r.id === id);
+    if (index === -1) return list;
+    const item = {
+      ...list[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    updated = item;
+    const next = [...list];
+    next[index] = item;
+    return next;
+  });
+  return updated;
 }
 
 export async function deleteReview(id: string): Promise<boolean> {
-  const list = (await readKey<ExtendedTestimonial[]>('reviews')) || [];
-  const index = list.findIndex((r) => r.id === id);
-  if (index !== -1) {
-    list.splice(index, 1);
-    await writeKey('reviews', list);
-    return true;
-  }
-  return false;
+  let deleted = false;
+  await runTransactionalArrayMutation<ExtendedTestimonial>('reviews', (list) => {
+    const index = list.findIndex((r) => r.id === id);
+    if (index === -1) return list;
+    deleted = true;
+    return list.filter((r) => r.id !== id);
+  });
+  return deleted;
 }
 
 // ==================== HANDWRITTEN REVIEWS OPERATIONS ====================
@@ -572,55 +583,60 @@ export async function getEventById(id: string): Promise<CmsEvent | null> {
 }
 
 export async function createEvent(data: Omit<CmsEvent, 'id' | 'createdAt' | 'updatedAt' | 'order'>): Promise<CmsEvent> {
-  const list = (await readKey<CmsEvent[]>('events')) || [];
-  const now = new Date().toISOString();
-  const newEvent: CmsEvent = {
-    ...data,
-    id: `event-${Date.now()}`,
-    order: list.length,
-    createdAt: now,
-    updatedAt: now,
-  };
-  list.push(newEvent);
-  await writeKey('events', list);
-  return newEvent;
+  let created: CmsEvent | null = null;
+  await runTransactionalArrayMutation<CmsEvent>('events', (list) => {
+    const now = new Date().toISOString();
+    const newEvent: CmsEvent = {
+      ...data,
+      id: `event-${Date.now()}`,
+      order: list.length,
+      createdAt: now,
+      updatedAt: now,
+    };
+    created = newEvent;
+    return [...list, newEvent];
+  });
+  return created!;
 }
 
 export async function updateEvent(id: string, updates: Partial<CmsEvent>): Promise<CmsEvent | null> {
-  const list = (await readKey<CmsEvent[]>('events')) || [];
-  const index = list.findIndex((e) => e.id === id);
-  if (index === -1) return null;
-
-  list[index] = {
-    ...list[index],
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  };
-  await writeKey('events', list);
-  return list[index];
+  let updated: CmsEvent | null = null;
+  await runTransactionalArrayMutation<CmsEvent>('events', (list) => {
+    const index = list.findIndex((e) => e.id === id);
+    if (index === -1) return list;
+    const item = {
+      ...list[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    updated = item;
+    const next = [...list];
+    next[index] = item;
+    return next;
+  });
+  return updated;
 }
 
 export async function deleteEvent(id: string): Promise<boolean> {
-  const list = (await readKey<CmsEvent[]>('events')) || [];
-  const index = list.findIndex((e) => e.id === id);
-  if (index !== -1) {
-    list.splice(index, 1);
-    await writeKey('events', list);
-    return true;
-  }
-  return false;
+  let deleted = false;
+  await runTransactionalArrayMutation<CmsEvent>('events', (list) => {
+    const index = list.findIndex((e) => e.id === id);
+    if (index === -1) return list;
+    deleted = true;
+    return list.filter((e) => e.id !== id);
+  });
+  return deleted;
 }
 
 export async function reorderEvents(ids: string[]): Promise<boolean> {
-  const list = (await readKey<CmsEvent[]>('events')) || [];
-  const orderMap = new Map(ids.map((id, index) => [id, index]));
-  for (const item of list) {
-    if (orderMap.has(item.id)) {
-      item.order = orderMap.get(item.id)!;
-    }
-  }
-  list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  await writeKey('events', list);
+  await runTransactionalArrayMutation<CmsEvent>('events', (list) => {
+    const orderMap = new Map(ids.map((id, index) => [id, index]));
+    const next = list.map((item) => ({
+      ...item,
+      order: orderMap.has(item.id) ? orderMap.get(item.id)! : item.order,
+    }));
+    return next.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  });
   return true;
 }
 

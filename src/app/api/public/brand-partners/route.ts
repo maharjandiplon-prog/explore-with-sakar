@@ -1,4 +1,4 @@
-export const dynamic = 'force-dynamic';
+export const revalidate = 300;
 
 import { NextResponse } from 'next/server';
 import { getAllBrandPartners } from '@/lib/db';
@@ -10,7 +10,7 @@ export async function GET() {
       { partners: partners || [] },
       {
         headers: {
-          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
         },
       }
     );

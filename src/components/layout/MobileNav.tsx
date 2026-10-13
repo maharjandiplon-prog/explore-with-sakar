@@ -339,7 +339,90 @@ export default function MobileNav({ isOpen, onClose }: MobileNavProps) {
                     )}
                   </div>
 
-                  {/* 2. EVENTS */}
+                  {/* 2. DESTINATIONS Group */}
+                  <div className="rounded-xl border border-parchment-300 bg-white overflow-hidden shadow-xs">
+                    <button
+                      onClick={() => toggleSection('destinations')}
+                      className="w-full p-4 flex items-center justify-between font-editorial-serif text-sm font-bold uppercase tracking-wider text-himalaya-950"
+                    >
+                      <span className="flex items-center space-x-2">
+                        <Mountain className="w-4 h-4 text-terracotta" />
+                        <span>DESTINATIONS</span>
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-himalaya-500 transition-transform duration-300 ${
+                          openSection === 'destinations' ? 'rotate-180 text-terracotta' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {openSection === 'destinations' && (
+                      <div className="px-4 pb-4 pt-1 space-y-3 border-t border-parchment-200 divide-y divide-parchment-100">
+                        <Link
+                          href="/destinations/kathmandu-valley"
+                          onClick={onClose}
+                          className="block group pt-2 first:pt-1 pb-1"
+                        >
+                          <span className="font-editorial-serif text-xs font-bold text-himalaya-900 group-hover:text-terracotta transition-colors flex items-center">
+                            <Mountain className="w-3.5 h-3.5 mr-1.5 text-terracotta" />
+                            Kathmandu Valley
+                          </span>
+                        </Link>
+                        <Link
+                          href="/destinations/pokhara-annapurna"
+                          onClick={onClose}
+                          className="block group pt-2.5 pb-1"
+                        >
+                          <span className="font-editorial-serif text-xs font-bold text-himalaya-900 group-hover:text-terracotta transition-colors flex items-center">
+                            <Mountain className="w-3.5 h-3.5 mr-1.5 text-terracotta" />
+                            Pokhara & Annapurna Foothills
+                          </span>
+                        </Link>
+                        <Link
+                          href="/destinations/mustang-muktinath"
+                          onClick={onClose}
+                          className="block group pt-2.5 pb-1"
+                        >
+                          <span className="font-editorial-serif text-xs font-bold text-himalaya-900 group-hover:text-terracotta transition-colors flex items-center">
+                            <Mountain className="w-3.5 h-3.5 mr-1.5 text-terracotta" />
+                            Mustang & Muktinath
+                          </span>
+                        </Link>
+                        <Link
+                          href="/destinations/langtang-helambu"
+                          onClick={onClose}
+                          className="block group pt-2.5 pb-1"
+                        >
+                          <span className="font-editorial-serif text-xs font-bold text-himalaya-900 group-hover:text-terracotta transition-colors flex items-center">
+                            <Mountain className="w-3.5 h-3.5 mr-1.5 text-terracotta" />
+                            Langtang & Helambu
+                          </span>
+                        </Link>
+                        <Link
+                          href="/destinations/chitwan-subtropics"
+                          onClick={onClose}
+                          className="block group pt-2.5 pb-1"
+                        >
+                          <span className="font-editorial-serif text-xs font-bold text-himalaya-900 group-hover:text-terracotta transition-colors flex items-center">
+                            <Mountain className="w-3.5 h-3.5 mr-1.5 text-terracotta" />
+                            Chitwan Lowlands
+                          </span>
+                        </Link>
+                        <div className="pt-2">
+                          <Link
+                            href="/destinations"
+                            onClick={onClose}
+                            className="text-xs font-semibold uppercase tracking-wider text-terracotta hover:underline py-1 flex items-center justify-between"
+                          >
+                            <span>• View All Destinations</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </Link>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. EVENTS */}
                   <Link
                     href="/events"
                     onClick={onClose}

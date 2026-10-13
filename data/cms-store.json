@@ -6136,28 +6136,7 @@
       "quoteAuthor": "Sakar, Founder & Guide"
     }
   ],
-  "inquiries": [
-    {
-      "fullName": "Sophie Laurent",
-      "email": "sophie.laurent@example.com",
-      "whatsapp": "+33612345678",
-      "country": "France",
-      "travelDates": "October 2026",
-      "approximateDuration": "10 - 14 Days (Deep Immersion)",
-      "travelersCount": "2 Travelers",
-      "travelStyle": "Slow & Meaningful Cultural Immersion",
-      "preferredInterests": [
-        "Culture & Heritage Discovery",
-        "Wellness, Healing & Transformation"
-      ],
-      "homestayInterest": "Yes, absolutely love homestays",
-      "message": "Namaste Sakar, we would love to plan a mindful two-week journey focusing on monastery chanting and Newari crafts.",
-      "id": "inq-1789323152811-k2q85",
-      "status": "read",
-      "createdAt": "2026-09-13T18:12:32.811Z",
-      "updatedAt": "2026-09-13T18:13:04.905Z"
-    }
-  ],
+  "inquiries": [],
   "handwrittenReviews": [
     {
       "id": "hw-1",

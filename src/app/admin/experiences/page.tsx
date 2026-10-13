@@ -863,7 +863,7 @@ function AdminExperiencesContent() {
                       <span>Day-by-Day Itinerary Outline</span>
                     </h4>
                     <p className="text-xs text-parchment-400 font-light mt-0.5">
-                      Add and order each day's title and description.
+                      Add and order each day&apos;s title and description.
                     </p>
                   </div>
 
@@ -950,7 +950,7 @@ function AdminExperiencesContent() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-mono uppercase tracking-wider text-parchment-300 mb-1.5">
-                    Sakar's Personal Perspective / Note
+                    Sakar&apos;s Personal Perspective / Note
                   </label>
                   <textarea
                     rows={3}

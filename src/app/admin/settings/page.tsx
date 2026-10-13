@@ -1019,7 +1019,7 @@ export default function AdminSettingsPage() {
               <div>
                 <h4 className="font-bold text-white text-base mb-1">📝 Blog & Stories</h4>
                 <p className="text-parchment-300">
-                  Manage all stories in the Himalayan Journal. You can search by title/content, filter by category or publication status (Published / Draft), edit full article content, and publish updates live to MongoDB.
+                  Manage all stories in the Himalayan Journal. You can search by title/content, filter by category or publication status (Published / Draft), edit full article content, and publish updates live to Firestore.
                 </p>
               </div>
 

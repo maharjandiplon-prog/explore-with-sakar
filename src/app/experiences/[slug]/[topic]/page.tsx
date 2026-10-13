@@ -21,9 +21,8 @@ import { EXPERIENCE_PILLARS } from '@/lib/experiencePillars';
 import { EXPERIENCES } from '@/data/experiences';
 import { getCanonicalUrl } from '@/lib/config';
 
-// Force dynamic so individual topic pages always pull fresh data from the database
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+// ISR: cached for 5 minutes at Edge, revalidated on-demand when admin updates experiences
+export const revalidate = 300;
 
 interface Props {
   params: { slug: string; topic: string };
@@ -118,7 +117,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     return { title: 'Topic Not Found | Explore With Sakar' };
   }
 
-  const canonicalUrl = getCanonicalUrl(`/experiences/${slug}/${experience.slug}`);
+  const canonicalPillar =
+    slug === 'go-spiritual' || slug === 'spiritual-wellness' ? 'go-within' : slug;
+  const canonicalUrl = getCanonicalUrl(`/experiences/${canonicalPillar}/${experience.slug}`);
   const seoTitle = experience.seoTitle || `${experience.title} | Explore With Sakar`;
   const seoDesc = experience.seoDescription || experience.shortDescription;
   const ogImg =

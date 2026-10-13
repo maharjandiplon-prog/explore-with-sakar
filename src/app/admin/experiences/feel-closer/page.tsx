@@ -26,7 +26,7 @@ export default function FeelCloserHubPage() {
             <div>
               <h2 className="font-editorial-serif text-xl font-bold text-slate-900">Feel Closer — Homestays</h2>
               <p className="text-sm text-slate-700 font-normal mt-1 leading-relaxed">
-                Traditional village homestays, hearthside cooking & warm family bonds. Manage this pillar's itineraries and content only.
+                Traditional village homestays, hearthside cooking & warm family bonds. Manage this pillar&apos;s itineraries and content only.
               </p>
               <div className="mt-3">
                 <Link href="/experiences/homestays" target="_blank" className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border text-slate-800 bg-slate-100 border-slate-300 hover:bg-slate-200 transition-colors">

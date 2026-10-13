@@ -1,9 +1,11 @@
 'use client';
 
 import React, { forwardRef, useEffect, useState } from 'react';
-import HTMLFlipBook from 'react-pageflip';
+import dynamic from 'next/dynamic';
 import { ChevronLeft, ChevronRight, BookOpen, Layers } from 'lucide-react';
 import { HandwrittenReviewPage } from '@/types/cms';
+
+const HTMLFlipBook = dynamic(() => import('react-pageflip'), { ssr: false });
 
 interface PageProps {
   imageUrl: string;
@@ -283,10 +285,10 @@ export default function GuestBook({ initialPages }: GuestBookProps) {
               <div className="absolute inset-0 bg-himalaya-900/50 mix-blend-overlay"></div>
               <div className="relative z-10 flex flex-col items-center border-2 border-saffron-dark/40 p-8 sm:p-12 m-4 rounded-sm bg-himalaya-950/80 backdrop-blur-sm shadow-xl w-3/4">
                 <span className="text-terracotta text-xs sm:text-sm uppercase tracking-widest font-bold mb-4 text-center">
-                  Travelers' Words
+                  Travelers&apos; Words
                 </span>
                 <h2 className="text-parchment-100 font-editorial-serif text-2xl sm:text-4xl text-center leading-tight">
-                  Sakar's <br />Guest <br />Journal
+                  Sakar&apos;s <br />Guest <br />Journal
                 </h2>
                 <div className="mt-8 w-12 h-[1px] bg-terracotta/50"></div>
                 <span className="text-[10px] text-parchment-300 uppercase tracking-widest mt-4">

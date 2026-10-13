@@ -20,11 +20,12 @@ import CTASection from '@/components/common/CTASection';
 import TestimonialCard from '@/components/common/TestimonialCard';
 import { getPublicReviews, getPageContent } from '@/lib/content';
 import { getPageHeroOverrides, isSectionVisible } from '@/lib/pageContentHelper';
+import { SITE_ORIGIN } from '@/lib/config';
 
 const FALLBACK_METADATA: Metadata = {
   title: 'About Sakar & Our Story | Explore With Sakar',
   description: 'Meet Sakar, Responsible Tour Director in Nepal. Learn about his background in community development, local roots in Kathmandu, and philosophy of slow, meaningful travel.',
-  alternates: { canonical: 'https://explorewithsakar.com/about' },
+  alternates: { canonical: `${SITE_ORIGIN}/about` },
 };
 
 export async function generateMetadata(): Promise<Metadata> {

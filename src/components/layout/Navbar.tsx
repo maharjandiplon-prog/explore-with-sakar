@@ -98,6 +98,50 @@ export const MAIN_NAV_STRUCTURE: NavItem[] = [
     ],
   },
   {
+    label: 'DESTINATIONS',
+    href: '/destinations',
+    subtitle: 'Sacred Lands & Regions of Nepal',
+    columns: 1,
+    children: [
+      {
+        title: 'Kathmandu Valley',
+        description: 'Living museum of sacred shrines & medieval Newar bahals.',
+        href: '/destinations/kathmandu-valley',
+        icon: Mountain,
+      },
+      {
+        title: 'Pokhara & Annapurna Foothills',
+        description: 'Tranquil lakeside reflections & Gurung mountain hamlets.',
+        href: '/destinations/pokhara-annapurna',
+        icon: Mountain,
+      },
+      {
+        title: 'Mustang & Muktinath',
+        description: 'Sacred rainshadow canyons & eternal pilgrimage springs.',
+        href: '/destinations/mustang-muktinath',
+        icon: Mountain,
+      },
+      {
+        title: 'Langtang & Helambu',
+        description: 'Glacial valleys, sacred Tamang gompas & rhododendron forests.',
+        href: '/destinations/langtang-helambu',
+        icon: Mountain,
+      },
+      {
+        title: 'Chitwan Lowlands',
+        description: 'Subtropical jungles & indigenous Tharu conservationists.',
+        href: '/destinations/chitwan-subtropics',
+        icon: Mountain,
+      },
+      {
+        title: 'All Curated Destinations →',
+        description: 'Browse the complete regional directory of Nepal.',
+        href: '/destinations',
+        icon: Compass,
+      },
+    ],
+  },
+  {
     label: 'EVENTS',
     href: '/events',
   },

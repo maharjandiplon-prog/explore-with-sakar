@@ -27,17 +27,34 @@ import { LeaveAMarkData } from '@/data/leave-a-mark';
  */
 export type PublicBlogListItem = Omit<ExtendedBlogPost, 'content'>;
 
+export interface PublicContentOptions {
+  /**
+   * If true, return seed/static data if Firestore fails.
+   * Default is false (throws error so Next.js ISR keeps previous cached page instead of caching fallback).
+   */
+  allowFallback?: boolean;
+}
+
+/**
+ * Helper to ensure ISR pages and next build throw on Firestore errors
+ * so Next.js does NOT poison its static cache with seed content.
+ */
+function handleFallbackOrThrow<T>(
+  err: any,
+  label: string,
+  fallbackFactory: () => T,
+  options?: PublicContentOptions
+): T {
+  if (options?.allowFallback) {
+    console.warn(`[content] Firestore unreachable, returning static fallback for ${label} (allowFallback=true):`, err);
+    return fallbackFactory();
+  }
+  console.error(`[content] Firestore query failed for ${label} (throwing to prevent ISR cache poisoning):`, err);
+  throw err;
+}
+
 // ==========================================
 // PERFORMANCE: stable per-slug cache maps
-//
-// The IIFE pattern `unstable_cache(fn, key, opts)()` creates a NEW closure
-// on every call. Next.js cannot deduplicate these because the function
-// reference changes each time. This causes:
-//   • redundant MongoDB reads on every request for blog/experience slugs
-//   • cache entries that never get reused
-//
-// Fix: register closures once in a module-level Map so the same stable
-// function reference is always returned for the same slug.
 // ==========================================
 
 const _slugCaches = {
@@ -70,12 +87,11 @@ const fetchCachedSettings = unstable_cache(
   { tags: ['cms:settings'], revalidate: 3600 }
 );
 
-export async function getPublicSettings(): Promise<WebsiteSettings> {
+export async function getPublicSettings(options?: PublicContentOptions): Promise<WebsiteSettings> {
   try {
     return await fetchCachedSettings();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for settings:', err);
-    return getSeedForKey('settings');
+    return handleFallbackOrThrow(err, 'settings', () => getSeedForKey('settings'), options);
   }
 }
 
@@ -90,12 +106,11 @@ const fetchCachedNavigation = unstable_cache(
   { tags: ['cms:navigation'], revalidate: 3600 }
 );
 
-export async function getPublicNavigation(): Promise<NavigationConfig> {
+export async function getPublicNavigation(options?: PublicContentOptions): Promise<NavigationConfig> {
   try {
     return await fetchCachedNavigation();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for navigation:', err);
-    return getSeedForKey('navigation');
+    return handleFallbackOrThrow(err, 'navigation', () => getSeedForKey('navigation'), options);
   }
 }
 
@@ -111,25 +126,36 @@ const fetchCachedPackages = unstable_cache(
   { tags: ['cms:packages'], revalidate: 3600 }
 );
 
-export async function getPublicPackages(): Promise<ExtendedPackage[]> {
+export async function getPublicPackages(options?: PublicContentOptions): Promise<ExtendedPackage[]> {
   try {
     return await fetchCachedPackages();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for packages:', err);
-    const seed = getSeedForKey('packages') as ExtendedPackage[];
-    return (seed || []).filter((pkg) => pkg.status === 'published');
+    return handleFallbackOrThrow(
+      err,
+      'packages',
+      () => {
+        const seed = getSeedForKey('packages') as ExtendedPackage[];
+        return (seed || []).filter((pkg) => pkg.status === 'published');
+      },
+      options
+    );
   }
 }
 
-export async function getPublicPackageBySlug(slug: string): Promise<ExtendedPackage | null> {
-  // Filter from the already-cached list — avoids a second MongoDB read.
+export async function getPublicPackageBySlug(slug: string, options?: PublicContentOptions): Promise<ExtendedPackage | null> {
   try {
     const all = await fetchCachedPackages();
     return all.find((p) => p.slug === slug || p.id === slug) || null;
   } catch (err) {
-    console.warn(`[content] Mongo unreachable, returning static fallback for package ${slug}:`, err);
-    const seed = getSeedForKey('packages') as ExtendedPackage[];
-    return (seed || []).find((p) => (p.slug === slug || p.id === slug) && p.status === 'published') || null;
+    return handleFallbackOrThrow(
+      err,
+      `package ${slug}`,
+      () => {
+        const seed = getSeedForKey('packages') as ExtendedPackage[];
+        return (seed || []).find((p) => (p.slug === slug || p.id === slug) && p.status === 'published') || null;
+      },
+      options
+    );
   }
 }
 
@@ -145,7 +171,7 @@ const fetchCachedExperiences = unstable_cache(
   { tags: ['cms:experiences'], revalidate: 3600 }
 );
 
-export async function getPublicExperiences(): Promise<ExtendedExperience[]> {
+export async function getPublicExperiences(options?: PublicContentOptions): Promise<ExtendedExperience[]> {
   try {
     const list = await fetchCachedExperiences();
     const cmsMap = new Map((list || []).map((e) => [e.slug, e]));
@@ -158,24 +184,25 @@ export async function getPublicExperiences(): Promise<ExtendedExperience[]> {
     }
     return merged.filter((exp) => exp.status === 'published');
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for experiences:', err);
-    const seed = getSeedForKey('experiences') as ExtendedExperience[];
-    return (seed || []).filter((exp) => exp.status === 'published');
+    return handleFallbackOrThrow(
+      err,
+      'experiences',
+      () => {
+        const seed = getSeedForKey('experiences') as ExtendedExperience[];
+        return (seed || []).filter((exp) => exp.status === 'published');
+      },
+      options
+    );
   }
 }
 
-/**
- * Returns a single experience by slug.
- * Uses the already-cached full list so no extra MongoDB round-trip is needed.
- * Falls back to seed data if MongoDB is unreachable.
- */
-export async function getPublicExperienceBySlug(slug: string): Promise<ExtendedExperience | null> {
-  const all = await getPublicExperiences();
+export async function getPublicExperienceBySlug(slug: string, options?: PublicContentOptions): Promise<ExtendedExperience | null> {
+  const all = await getPublicExperiences(options);
   return all.find((e) => e.slug === slug || e.id === slug) || null;
 }
 
-export async function getPublicTopFeaturedExperiences(limit = 3): Promise<ExtendedExperience[]> {
-  const all = await getPublicExperiences();
+export async function getPublicTopFeaturedExperiences(limit = 3, options?: PublicContentOptions): Promise<ExtendedExperience[]> {
+  const all = await getPublicExperiences(options);
   const candidates = all.filter(
     (e) =>
       e.status === 'published' &&
@@ -204,13 +231,19 @@ const fetchCachedServices = unstable_cache(
   { tags: ['cms:services'], revalidate: 3600 }
 );
 
-export async function getPublicServices(): Promise<ExtendedServicePillar[]> {
+export async function getPublicServices(options?: PublicContentOptions): Promise<ExtendedServicePillar[]> {
   try {
     return await fetchCachedServices();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for services:', err);
-    const seed = getSeedForKey('services') as ExtendedServicePillar[];
-    return (seed || []).filter((s) => s.status === 'published');
+    return handleFallbackOrThrow(
+      err,
+      'services',
+      () => {
+        const seed = getSeedForKey('services') as ExtendedServicePillar[];
+        return (seed || []).filter((s) => s.status === 'published');
+      },
+      options
+    );
   }
 }
 
@@ -226,13 +259,19 @@ const fetchCachedEvents = unstable_cache(
   { tags: ['cms:events'], revalidate: 3600 }
 );
 
-export async function getPublicEvents(): Promise<CmsEvent[]> {
+export async function getPublicEvents(options?: PublicContentOptions): Promise<CmsEvent[]> {
   try {
     return await fetchCachedEvents();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for events:', err);
-    const seed = getSeedForKey('events') as CmsEvent[];
-    return (seed || []).filter((evt) => evt.isVisible !== false);
+    return handleFallbackOrThrow(
+      err,
+      'events',
+      () => {
+        const seed = getSeedForKey('events') as CmsEvent[];
+        return (seed || []).filter((evt) => evt.isVisible !== false);
+      },
+      options
+    );
   }
 }
 
@@ -248,25 +287,36 @@ const fetchCachedDestinations = unstable_cache(
   { tags: ['cms:destinations'], revalidate: 3600 }
 );
 
-export async function getPublicDestinations(): Promise<CmsDestination[]> {
+export async function getPublicDestinations(options?: PublicContentOptions): Promise<CmsDestination[]> {
   try {
     return await fetchCachedDestinations();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for destinations:', err);
-    const seed = getSeedForKey('destinations') as CmsDestination[];
-    return (seed || []).filter((dest) => dest.isVisible !== false);
+    return handleFallbackOrThrow(
+      err,
+      'destinations',
+      () => {
+        const seed = getSeedForKey('destinations') as CmsDestination[];
+        return (seed || []).filter((dest) => dest.isVisible !== false);
+      },
+      options
+    );
   }
 }
 
-export async function getPublicDestinationBySlug(slug: string): Promise<CmsDestination | null> {
-  // Filter from the already-cached list — no second MongoDB read needed.
+export async function getPublicDestinationBySlug(slug: string, options?: PublicContentOptions): Promise<CmsDestination | null> {
   try {
     const all = await fetchCachedDestinations();
     return all.find((d) => d.slug === slug || d.id === slug) || null;
   } catch (err) {
-    console.warn(`[content] Mongo unreachable, returning static fallback for destination ${slug}:`, err);
-    const seed = getSeedForKey('destinations') as CmsDestination[];
-    return (seed || []).find((d) => (d.slug === slug || d.id === slug) && d.isVisible !== false) || null;
+    return handleFallbackOrThrow(
+      err,
+      `destination ${slug}`,
+      () => {
+        const seed = getSeedForKey('destinations') as CmsDestination[];
+        return (seed || []).find((d) => (d.slug === slug || d.id === slug) && d.isVisible !== false) || null;
+      },
+      options
+    );
   }
 }
 
@@ -282,13 +332,19 @@ const fetchCachedFaq = unstable_cache(
   { tags: ['cms:faq'], revalidate: 3600 }
 );
 
-export async function getPublicFaq(): Promise<CmsFaqItem[]> {
+export async function getPublicFaq(options?: PublicContentOptions): Promise<CmsFaqItem[]> {
   try {
     return await fetchCachedFaq();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for FAQ:', err);
-    const seed = getSeedForKey('faq') as CmsFaqItem[];
-    return (seed || []).filter((item) => item.isVisible !== false);
+    return handleFallbackOrThrow(
+      err,
+      'faq',
+      () => {
+        const seed = getSeedForKey('faq') as CmsFaqItem[];
+        return (seed || []).filter((item) => item.isVisible !== false);
+      },
+      options
+    );
   }
 }
 
@@ -304,13 +360,19 @@ const fetchCachedReviews = unstable_cache(
   { tags: ['cms:reviews'], revalidate: 3600 }
 );
 
-export async function getPublicReviews(): Promise<ExtendedTestimonial[]> {
+export async function getPublicReviews(options?: PublicContentOptions): Promise<ExtendedTestimonial[]> {
   try {
     return await fetchCachedReviews();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for reviews:', err);
-    const seed = getSeedForKey('reviews') as ExtendedTestimonial[];
-    return (seed || []).filter((r) => r.isVisible !== false && r.status === 'approved');
+    return handleFallbackOrThrow(
+      err,
+      'reviews',
+      () => {
+        const seed = getSeedForKey('reviews') as ExtendedTestimonial[];
+        return (seed || []).filter((r) => r.isVisible !== false && r.status === 'approved');
+      },
+      options
+    );
   }
 }
 
@@ -323,13 +385,19 @@ const fetchCachedHandwrittenReviews = unstable_cache(
   { tags: ['cms:handwrittenReviews'], revalidate: 3600 }
 );
 
-export async function getPublicHandwrittenReviews(): Promise<HandwrittenReviewPage[]> {
+export async function getPublicHandwrittenReviews(options?: PublicContentOptions): Promise<HandwrittenReviewPage[]> {
   try {
     return await fetchCachedHandwrittenReviews();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for handwritten reviews:', err);
-    const seed = getSeedForKey('handwrittenReviews') as HandwrittenReviewPage[];
-    return (seed || []).filter((p) => p.isVisible !== false);
+    return handleFallbackOrThrow(
+      err,
+      'handwrittenReviews',
+      () => {
+        const seed = getSeedForKey('handwrittenReviews') as HandwrittenReviewPage[];
+        return (seed || []).filter((p) => p.isVisible !== false);
+      },
+      options
+    );
   }
 }
 
@@ -345,12 +413,16 @@ const fetchCachedPhotos = unstable_cache(
   { tags: ['cms:photos'], revalidate: 3600 }
 );
 
-export async function getPublicPhotos(): Promise<ExtendedGalleryPhoto[]> {
+export async function getPublicPhotos(options?: PublicContentOptions): Promise<ExtendedGalleryPhoto[]> {
   try {
     return await fetchCachedPhotos();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for photos:', err);
-    return (getSeedForKey('photos') as ExtendedGalleryPhoto[]) || [];
+    return handleFallbackOrThrow(
+      err,
+      'photos',
+      () => (getSeedForKey('photos') as ExtendedGalleryPhoto[]) || [],
+      options
+    );
   }
 }
 
@@ -358,10 +430,6 @@ export async function getPublicPhotos(): Promise<ExtendedGalleryPhoto[]> {
 // 11. Blogs
 // ==========================================
 
-/**
- * Full blog list (published only, content stripped).
- * This is the primary cache entry — all other blog lookups derive from it.
- */
 const fetchCachedBlogsList = unstable_cache(
   async (): Promise<PublicBlogListItem[]> => {
     const list = await readKey<ExtendedBlogPost[]>('blogs', { throwOnError: true });
@@ -373,23 +441,24 @@ const fetchCachedBlogsList = unstable_cache(
   { tags: ['cms:blogs'], revalidate: 3600 }
 );
 
-export async function getPublicBlogs(): Promise<PublicBlogListItem[]> {
+export async function getPublicBlogs(options?: PublicContentOptions): Promise<PublicBlogListItem[]> {
   try {
     return await fetchCachedBlogsList();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for blogs list:', err);
-    const seed = getSeedForKey('blogs') as ExtendedBlogPost[];
-    return (seed || [])
-      .filter((b) => b.status === 'published')
-      .map(({ content, ...rest }) => rest);
+    return handleFallbackOrThrow(
+      err,
+      'blogs list',
+      () => {
+        const seed = getSeedForKey('blogs') as ExtendedBlogPost[];
+        return (seed || [])
+          .filter((b) => b.status === 'published')
+          .map(({ content, ...rest }) => rest);
+      },
+      options
+    );
   }
 }
 
-/**
- * Full blog post including content blocks — used only on the individual blog page.
- * Uses a stable per-slug cache (registered once per slug in the module Map)
- * to avoid the IIFE antipattern that creates new cache closures on every request.
- */
 function getOrCreateBlogSlugCache(slug: string): () => Promise<ExtendedBlogPost | null> {
   return getOrCreateSlugCache(
     _slugCaches.blog as Map<string, () => Promise<ExtendedBlogPost | null>>,
@@ -406,13 +475,19 @@ function getOrCreateBlogSlugCache(slug: string): () => Promise<ExtendedBlogPost 
   );
 }
 
-export async function getPublicBlogBySlug(slug: string): Promise<ExtendedBlogPost | null> {
+export async function getPublicBlogBySlug(slug: string, options?: PublicContentOptions): Promise<ExtendedBlogPost | null> {
   try {
     return await getOrCreateBlogSlugCache(slug)();
   } catch (err) {
-    console.warn(`[content] Mongo unreachable, returning static fallback for blog ${slug}:`, err);
-    const seed = getSeedForKey('blogs') as ExtendedBlogPost[];
-    return (seed || []).find((b) => b.slug === slug && b.status === 'published') || null;
+    return handleFallbackOrThrow(
+      err,
+      `blog ${slug}`,
+      () => {
+        const seed = getSeedForKey('blogs') as ExtendedBlogPost[];
+        return (seed || []).find((b) => b.slug === slug && b.status === 'published') || null;
+      },
+      options
+    );
   }
 }
 
@@ -423,12 +498,8 @@ export interface PillarStory {
   blog: PublicBlogListItem;
 }
 
-/**
- * Returns one representative blog per content pillar for the homepage
- * "Stories That Take You Further" section.
- */
-export async function getPublicPillarStories(): Promise<PillarStory[]> {
-  const all = await getPublicBlogs();
+export async function getPublicPillarStories(options?: PublicContentOptions): Promise<PillarStory[]> {
+  const all = await getPublicBlogs(options);
 
   const pickFirst = (preferredSlugs: string[], fallbackCategories: string[]): PublicBlogListItem | null => {
     for (const slug of preferredSlugs) {
@@ -458,8 +529,8 @@ export async function getPublicPillarStories(): Promise<PillarStory[]> {
   return result;
 }
 
-export async function getPublicRelatedBlogs(currentSlug: string, count = 3): Promise<PublicBlogListItem[]> {
-  const all = await getPublicBlogs();
+export async function getPublicRelatedBlogs(currentSlug: string, count = 3, options?: PublicContentOptions): Promise<PublicBlogListItem[]> {
+  const all = await getPublicBlogs(options);
   const current = all.find((b) => b.slug === currentSlug);
   if (!current) return all.slice(0, count);
 
@@ -484,9 +555,6 @@ export async function getPublicRelatedBlogs(currentSlug: string, count = 3): Pro
 // 12. Pages Content
 // ==========================================
 
-/**
- * Per-page stable cache — same stable-closure pattern as blogs.
- */
 function getOrCreatePageCache(slug: string): () => Promise<PageContent | null> {
   return getOrCreateSlugCache(
     _slugCaches.page as Map<string, () => Promise<PageContent | null>>,
@@ -503,13 +571,19 @@ function getOrCreatePageCache(slug: string): () => Promise<PageContent | null> {
   );
 }
 
-export async function getPageContent(slug: string): Promise<PageContent | null> {
+export async function getPageContent(slug: string, options?: PublicContentOptions): Promise<PageContent | null> {
   try {
     return await getOrCreatePageCache(slug)();
   } catch (err) {
-    console.warn(`[content] Mongo unreachable, returning static fallback for page ${slug}:`, err);
-    const seed = getSeedForKey('pages') as PageContent[];
-    return (seed || []).find((p) => p.slug === slug) || null;
+    return handleFallbackOrThrow(
+      err,
+      `page ${slug}`,
+      () => {
+        const seed = getSeedForKey('pages') as PageContent[];
+        return (seed || []).find((p) => p.slug === slug) || null;
+      },
+      options
+    );
   }
 }
 
@@ -527,15 +601,21 @@ const fetchCachedBeyondChapters = unstable_cache(
   { tags: ['cms:beyondChapters'], revalidate: 3600 }
 );
 
-export async function getPublicBeyondChapters(): Promise<CmsBeyondChapter[]> {
+export async function getPublicBeyondChapters(options?: PublicContentOptions): Promise<CmsBeyondChapter[]> {
   try {
     return await fetchCachedBeyondChapters();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for beyondChapters:', err);
-    const seed = getSeedForKey('beyondChapters') as CmsBeyondChapter[];
-    return (seed || [])
-      .filter((c) => c.isPublished !== false)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return handleFallbackOrThrow(
+      err,
+      'beyondChapters',
+      () => {
+        const seed = getSeedForKey('beyondChapters') as CmsBeyondChapter[];
+        return (seed || [])
+          .filter((c) => c.isPublished !== false)
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      },
+      options
+    );
   }
 }
 
@@ -551,12 +631,16 @@ const fetchCachedLeaveAMark = unstable_cache(
   { tags: ['cms:leaveAMark'], revalidate: 3600 }
 );
 
-export async function getPublicLeaveAMark(): Promise<LeaveAMarkData> {
+export async function getPublicLeaveAMark(options?: PublicContentOptions): Promise<LeaveAMarkData> {
   try {
     return await fetchCachedLeaveAMark();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning static fallback for leaveAMark:', err);
-    return getSeedForKey('leaveAMark') as LeaveAMarkData;
+    return handleFallbackOrThrow(
+      err,
+      'leaveAMark',
+      () => getSeedForKey('leaveAMark') as LeaveAMarkData,
+      options
+    );
   }
 }
 
@@ -574,11 +658,10 @@ const fetchCachedBrandPartners = unstable_cache(
   { tags: ['cms:brandPartners'], revalidate: 3600 }
 );
 
-export async function getPublicBrandPartners(): Promise<CmsBrandPartner[]> {
+export async function getPublicBrandPartners(options?: PublicContentOptions): Promise<CmsBrandPartner[]> {
   try {
     return await fetchCachedBrandPartners();
   } catch (err) {
-    console.warn('[content] Mongo unreachable, returning empty fallback for brandPartners:', err);
-    return [];
+    return handleFallbackOrThrow(err, 'brandPartners', () => [], options);
   }
 }

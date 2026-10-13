@@ -13,6 +13,48 @@ const ALLOWED_MIME_TYPES = [
   'image/avif',
 ];
 
+const MIME_TO_ALLOWED_EXTENSIONS: Record<string, string[]> = {
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/webp': ['.webp'],
+  'image/gif': ['.gif'],
+  'image/avif': ['.avif'],
+};
+
+function validateImageMagicBytes(buf: Buffer, mime: string): boolean {
+  if (buf.length < 12) return false;
+  if (mime === 'image/jpeg') {
+    return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  }
+  if (mime === 'image/png') {
+    return (
+      buf[0] === 0x89 &&
+      buf[1] === 0x50 &&
+      buf[2] === 0x4e &&
+      buf[3] === 0x47 &&
+      buf[4] === 0x0d &&
+      buf[5] === 0x0a &&
+      buf[6] === 0x1a &&
+      buf[7] === 0x0a
+    );
+  }
+  if (mime === 'image/gif') {
+    const header = buf.subarray(0, 4).toString('ascii');
+    return header === 'GIF8';
+  }
+  if (mime === 'image/webp') {
+    return (
+      buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      buf.subarray(8, 12).toString('ascii') === 'WEBP'
+    );
+  }
+  if (mime === 'image/avif') {
+    const ftyp = buf.subarray(4, 12).toString('ascii');
+    return ftyp === 'ftypavif' || ftyp === 'ftypavis';
+  }
+  return false;
+}
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_BASE64_FALLBACK_SIZE = 500 * 1024; // 500KB cap for serverless data URL fallback
 
@@ -22,6 +64,10 @@ export async function POST(req: NextRequest) {
     const session = getSessionFromRequest(req);
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized: Admin session required' }, { status: 401 });
+    }
+
+    if (process.env.VERCEL_ENV === 'preview' && process.env.ALLOW_PREVIEW_WRITES !== 'true') {
+      return NextResponse.json({ error: 'Forbidden: Uploads are disabled on Vercel Preview environment' }, { status: 403 });
     }
 
     // 2. Parse multipart form data
@@ -48,17 +94,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Generate sanitized file name
-    const ext = path.extname(file.name) || '.jpg';
+    // 5. Validate file extension matches declared MIME type
+    const rawExt = (path.extname(file.name) || '').toLowerCase();
+    const allowedExts = MIME_TO_ALLOWED_EXTENSIONS[file.type] || [];
+    if (!rawExt || !allowedExts.includes(rawExt)) {
+      return NextResponse.json(
+        { error: `Invalid or mismatched file extension (${rawExt || 'none'}) for MIME type ${file.type}.` },
+        { status: 400 }
+      );
+    }
+
+    // 6. Inspect buffer magic bytes (prevent disguised scripts/executables/polyglots)
+    const arrayBuffer = await file.arrayBuffer();
+    let buffer = Buffer.from(arrayBuffer);
+
+    if (!validateImageMagicBytes(buffer, file.type)) {
+      return NextResponse.json(
+        { error: 'File signature does not match declared image format. Upload rejected.' },
+        { status: 400 }
+      );
+    }
+
+    // 7. Generate sanitized file name
     const sanitizedBase = path
-      .basename(file.name, ext)
+      .basename(file.name, rawExt)
       .toLowerCase()
       .replace(/[^a-z0-9_-]/g, '-')
       .slice(0, 30);
-    const uniqueName = `${Date.now()}-${sanitizedBase || 'image'}${ext.toLowerCase()}`;
-
-    const arrayBuffer = await file.arrayBuffer();
-    let buffer = Buffer.from(arrayBuffer);
+    const uniqueName = `${Date.now()}-${sanitizedBase || 'image'}${rawExt}`;
 
     // Auto-optimize standard bitmap images with sharp
     if (['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {

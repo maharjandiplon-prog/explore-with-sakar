@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllBeyondChapters, createBeyondChapter } from '@/lib/db';
 import { getAdminSession, getSessionFromRequest } from '@/lib/auth';
-import { revalidateTag } from 'next/cache';
+import { revalidateContent } from '@/lib/revalidate';
 
 export async function GET(req: NextRequest) {
   const session = getSessionFromRequest(req) || (await getAdminSession(req));
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     }
 
     const chapter = await createBeyondChapter(body);
-    revalidateTag('cms:beyondChapters');
+    revalidateContent('beyondChapters');
     return NextResponse.json({ success: true, chapter }, { status: 201 });
   } catch (error: any) {
     if (error?.name === 'MongoUnavailableError') {

@@ -12,13 +12,20 @@ function getSecretKey(): string {
 
 export function hashPassword(password: string, salt?: string): { hash: string; salt: string } {
   const generatedSalt = salt || crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, generatedSalt, 10000, 64, 'sha512').toString('hex');
-  return { hash, salt: generatedSalt };
+  const scryptHash = crypto.scryptSync(password, generatedSalt, 64).toString('hex');
+  return { hash: `$scrypt$${scryptHash}`, salt: generatedSalt };
 }
 
 export function verifyPassword(password: string, hash: string, salt: string): boolean {
-  const calculatedHash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+  if (!password || !hash || !salt) return false;
   try {
+    if (hash.startsWith('$scrypt$')) {
+      const expected = hash.slice(8);
+      const calculated = crypto.scryptSync(password, salt, 64).toString('hex');
+      return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(calculated, 'hex'));
+    }
+    // Backward compatibility for legacy PBKDF2 hashes
+    const calculatedHash = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
     return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(calculatedHash, 'hex'));
   } catch {
     return false;

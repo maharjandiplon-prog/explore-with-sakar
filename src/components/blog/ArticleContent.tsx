@@ -2,9 +2,12 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import { BlogPost, BlogBlock, GalleryPhoto } from '@/types';
-import Lightbox from '@/components/gallery/Lightbox';
 import { Maximize2, CheckCircle, Info } from 'lucide-react';
+
+const Lightbox = dynamic(() => import('@/components/gallery/Lightbox'), { ssr: false });
+
 
 interface ArticleContentProps {
   post: BlogPost;

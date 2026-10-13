@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { reorderBeyondChapters } from '@/lib/db';
 import { getAdminSession, getSessionFromRequest } from '@/lib/auth';
-import { revalidateTag } from 'next/cache';
+import { revalidateContent } from '@/lib/revalidate';
 
 export async function PATCH(req: NextRequest) {
   const session = getSessionFromRequest(req) || (await getAdminSession(req));
@@ -18,7 +18,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     await reorderBeyondChapters(orderedIds);
-    revalidateTag('cms:beyondChapters');
+    revalidateContent('beyondChapters');
     return NextResponse.json({ success: true, message: 'Reordered chapters' });
   } catch (error: any) {
     if (error?.name === 'MongoUnavailableError') {

@@ -146,7 +146,7 @@ export default function Footer() {
                     </Link>
                   </li>
                   <li>
-                    <Link href="/experiences/spiritual-wellness" className="hover:text-terracotta transition-colors">
+                    <Link href="/experiences/go-within" className="hover:text-terracotta transition-colors">
                       Go Within
                     </Link>
                   </li>

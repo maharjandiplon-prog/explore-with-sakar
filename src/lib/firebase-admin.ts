@@ -24,9 +24,11 @@ export class MongoUnavailableError extends DatabaseUnavailableError {
   }
 }
 
-let app: App | null = null;
-let firestoreDb: Firestore | null = null;
-let storageBucket: ReturnType<Storage['bucket']> | null = null;
+declare global {
+  var _firebaseAdminApp: App | undefined;
+  var _firestoreDb: Firestore | undefined;
+  var _storageBucket: ReturnType<Storage['bucket']> | undefined;
+}
 
 export interface FirebaseConfigStatus {
   hasProjectId: boolean;
@@ -65,18 +67,15 @@ export function isFirebaseConfigured(): boolean {
 }
 
 export function getFirebaseAdminApp(): App {
-  if (app) return app;
+  if (globalThis._firebaseAdminApp) return globalThis._firebaseAdminApp;
 
   const existingApps = getApps();
   if (existingApps.length > 0 && existingApps[0]) {
-    app = existingApps[0];
-    return app;
+    globalThis._firebaseAdminApp = existingApps[0];
+    return globalThis._firebaseAdminApp;
   }
 
-  // During Next.js production build phase, skip throwing hard crashes
-  if (process.env.NEXT_PHASE === 'phase-production-build') {
-    throw new FirebaseUnavailableError('Skipping Firebase initialization during Next.js production build phase.');
-  }
+
 
   const status = getFirebaseConfigStatus();
   if (!status.isConfigured) {
@@ -91,7 +90,7 @@ export function getFirebaseAdminApp(): App {
   const storageBucketName = process.env.FIREBASE_STORAGE_BUCKET?.trim() || `${projectId}.appspot.com`;
 
   try {
-    app = initializeApp({
+    const newApp = initializeApp({
       credential: cert({
         projectId,
         clientEmail,
@@ -99,7 +98,8 @@ export function getFirebaseAdminApp(): App {
       }),
       storageBucket: storageBucketName,
     });
-    return app;
+    globalThis._firebaseAdminApp = newApp;
+    return newApp;
   } catch (err: any) {
     console.error('[firebase-admin] Error initializing app:', err?.message || err);
     throw new FirebaseUnavailableError(`Failed to initialize Firebase Admin app: ${err?.message || err}`);
@@ -107,16 +107,19 @@ export function getFirebaseAdminApp(): App {
 }
 
 export function getFirestoreDb(): Firestore {
-  if (firestoreDb) return firestoreDb;
+  if (globalThis._firestoreDb) return globalThis._firestoreDb;
   const adminApp = getFirebaseAdminApp();
-  firestoreDb = getFirestore(adminApp);
-  return firestoreDb;
+  const db = getFirestore(adminApp);
+  globalThis._firestoreDb = db;
+  return db;
 }
 
 export function getStorageBucket() {
-  if (storageBucket) return storageBucket;
+  if (globalThis._storageBucket) return globalThis._storageBucket;
   const adminApp = getFirebaseAdminApp();
   const bucketName = process.env.FIREBASE_STORAGE_BUCKET?.trim();
-  storageBucket = getStorage(adminApp).bucket(bucketName || undefined);
-  return storageBucket;
+  const bucket = getStorage(adminApp).bucket(bucketName || undefined);
+  globalThis._storageBucket = bucket;
+  return bucket;
 }
+

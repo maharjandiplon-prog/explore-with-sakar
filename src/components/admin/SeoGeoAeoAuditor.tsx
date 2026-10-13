@@ -464,10 +464,10 @@ export default function SeoGeoAeoAuditor({ pages, initialSlug, onApplyFix, onRef
             <div className="p-4 bg-slate-900 text-slate-100 rounded-2xl space-y-3 font-sans shadow-inner">
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Simulated generative answer for query: "Authentic travel & cultural guides in Nepal" (Heuristic Extraction)</span>
+                <span>Simulated generative answer for query: &quot;Authentic travel &amp; cultural guides in Nepal&quot; (Heuristic Extraction)</span>
               </div>
               <p className="text-xs sm:text-sm text-slate-200 leading-relaxed italic">
-                "{auditResult.aiSimulation.summary}"
+                &quot;{auditResult.aiSimulation.summary}&quot;
               </p>
               <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400 font-mono">
                 <span>Source: {SITE_ORIGIN}{auditResult.url || ''}</span>

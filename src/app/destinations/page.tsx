@@ -8,16 +8,19 @@ import SectionHeading from '@/components/common/SectionHeading';
 import DestinationCard from '@/components/common/DestinationCard';
 import CTASection from '@/components/common/CTASection';
 import { getPublicDestinations } from '@/lib/content';
+import { SITE_ORIGIN } from '@/lib/config';
 
 const FALLBACK_METADATA: Metadata = {
   title: 'Curated Destinations in Nepal | Explore With Sakar',
   description: 'Explore curated regions in Nepal: Kathmandu Valley, Pokhara & Annapurna, Mustang & Muktinath, Langtang, Chitwan Lowlands, and Bandipur.',
-  alternates: { canonical: 'https://explorewithsakar.com/destinations' },
+  alternates: { canonical: `${SITE_ORIGIN}/destinations` },
 };
 
 export async function generateMetadata(): Promise<Metadata> {
   return await buildPageMetadata('destinations', FALLBACK_METADATA);
 }
+
+export const revalidate = 300;
 
 export default async function DestinationsPage() {
   const destinations = await getPublicDestinations();

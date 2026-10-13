@@ -409,7 +409,7 @@ export default function AdminReviewsPage() {
               <div>
                 <strong className="text-slate-900 font-bold">Handwritten Guestbook Configuration:</strong>
                 <p className="mt-1 text-slate-600 font-light">
-                  Upload photos/scans of physical pages from Sakar's leatherbound guest journal.
+                  Upload photos/scans of physical pages from Sakar&apos;s leatherbound guest journal.
                   The <strong className="text-slate-900 underline font-semibold">Guest Name</strong> entered below is displayed in <strong className="text-terracotta font-bold">bold</strong> directly above the handwritten review in the guestbook at <code className="bg-white border border-slate-200 px-2 py-0.5 rounded text-amber-700 text-xs font-mono">/reviews#handwritten-journal</code>.
                 </p>
               </div>

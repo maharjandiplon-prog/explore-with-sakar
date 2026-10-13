@@ -1,5 +1,5 @@
 import { MetadataRoute } from 'next';
-import { getPublicExperiences, getPublicBlogs } from '@/lib/content';
+import { getPublicExperiences, getPublicBlogs, getPublicDestinations } from '@/lib/content';
 import { readKey } from '@/lib/store';
 import { PageContent } from '@/types/cms';
 import { DEFAULT_PUBLIC_PAGES } from '@/data/pages';
@@ -7,15 +7,12 @@ import { SITE_ORIGIN } from '@/lib/config';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = SITE_ORIGIN;
+  const now = new Date();
 
   try {
     // 1. Pages from CMS / Seed
     let pages: PageContent[] = [];
-    try {
-      pages = (await readKey<PageContent[]>('pages')) || [];
-    } catch {
-      // Fallback if Mongo unreachable
-    }
+    pages = (await readKey<PageContent[]>('pages', { throwOnError: true })) || [];
     if (!pages || pages.length === 0) {
       pages = DEFAULT_PUBLIC_PAGES;
     }
@@ -53,20 +50,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           pagePath = CANONICAL_EXPERIENCE_MAP[page.slug];
         } else if (pagePath.startsWith('/experience/') || pagePath.startsWith('/services/')) {
           pagePath = pagePath.replace(/^\/(?:experience|services)\//, '/experiences/');
+          if (pagePath === '/experiences/spiritual-wellness' || pagePath === '/experiences/go-spiritual') {
+            pagePath = '/experiences/go-within';
+          }
         }
 
         const isCanonicalExp = Object.values(CANONICAL_EXPERIENCE_MAP).includes(pagePath);
 
         return {
           url: isHome ? `${baseUrl}` : `${baseUrl}${pagePath}`,
-          lastModified: page.updatedAt ? new Date(page.updatedAt) : new Date(),
+          lastModified: page.updatedAt ? new Date(page.updatedAt) : now,
           changeFrequency: isHome ? 'daily' : isCanonicalExp ? 'weekly' : 'monthly',
           priority: isHome ? 1.0 : isCanonicalExp ? 0.9 : 0.8,
         };
       });
 
     // Explicitly guarantee canonical experience routes are included
-    const now = new Date();
     const coreExperienceRoutes: MetadataRoute.Sitemap = [
       { url: `${baseUrl}/experiences`, lastModified: now, changeFrequency: 'weekly', priority: 0.95 },
       { url: `${baseUrl}/experiences/beyond-the-map`, lastModified: now, changeFrequency: 'weekly', priority: 0.9 },
@@ -77,20 +76,32 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       { url: `${baseUrl}/experiences/custom-journeys`, lastModified: now, changeFrequency: 'weekly', priority: 0.9 },
     ];
 
-    // 2. Curated Experiences (dynamic package departures)
+    // 2. Curated Experiences (dynamic individual package/topic departures)
+    const categoryToParent: Record<string, string> = {
+      'beyond-the-map': 'beyond-the-map',
+      'go-beyond': 'beyond-the-map',
+      'heritage': 'beyond-the-map',
+      'go-within': 'go-within',
+      'go-spiritual': 'go-within',
+      'spiritual-wellness': 'go-within',
+      'spiritual': 'go-within',
+      'go-deeper': 'go-deeper',
+      'homestays': 'homestays',
+      'feel-closer': 'homestays',
+      'homestay': 'homestays',
+    };
+
     const experiences = await getPublicExperiences();
     const experienceRoutes: MetadataRoute.Sitemap = (experiences || [])
       .filter((exp) => exp.status === 'published' && !CANONICAL_EXPERIENCE_MAP[exp.slug])
       .map((exp) => {
-        const path =
-          exp.category === 'go-within'
-            ? `/experiences/go-within/${exp.slug}`
-            : exp.category === 'beyond-the-map'
-            ? `/experiences/beyond-the-map/${exp.slug}`
-            : `/experiences/${exp.slug}`;
+        const parentPillar = categoryToParent[exp.category];
+        const path = parentPillar
+          ? `/experiences/${parentPillar}/${exp.slug}`
+          : `/experiences/${exp.slug}`;
         return {
           url: `${baseUrl}${path}`,
-          lastModified: exp.updatedAt ? new Date(exp.updatedAt) : new Date(),
+          lastModified: exp.updatedAt ? new Date(exp.updatedAt) : now,
           changeFrequency: 'weekly',
           priority: 0.85,
         };
@@ -102,27 +113,35 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .filter((b) => b.status === 'published')
       .map((blog) => ({
         url: `${baseUrl}/blog/${blog.slug}`,
-        lastModified: blog.publishedAt ? new Date(blog.publishedAt) : new Date(),
+        lastModified: blog.publishedAt ? new Date(blog.publishedAt) : now,
         changeFrequency: 'monthly',
         priority: 0.75,
       }));
 
+    // 4. Destinations (Canonical individual destination guides)
+    const destinations = await getPublicDestinations();
+    const destinationRoutes: MetadataRoute.Sitemap = (destinations || []).map((dest) => ({
+      url: `${baseUrl}/destinations/${dest.slug || dest.id}`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.8,
+    }));
+
     // Deduplicate URLs
     const routeMap = new Map<string, MetadataRoute.Sitemap[number]>();
-    for (const route of [...coreExperienceRoutes, ...pageRoutes, ...experienceRoutes, ...blogRoutes]) {
+    for (const route of [
+      ...coreExperienceRoutes,
+      ...pageRoutes,
+      ...destinationRoutes,
+      ...experienceRoutes,
+      ...blogRoutes,
+    ]) {
       routeMap.set(route.url, route);
     }
 
     return Array.from(routeMap.values());
   } catch (err) {
-    console.error('Error generating sitemap:', err);
-    return [
-      {
-        url: `${baseUrl}`,
-        lastModified: new Date(),
-        changeFrequency: 'daily',
-        priority: 1.0,
-      },
-    ];
+    console.error('[sitemap] Error generating sitemap:', err);
+    throw err;
   }
 }

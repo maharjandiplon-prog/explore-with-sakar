@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { getBeyondChapterById, updateBeyondChapter, deleteBeyondChapter } from '@/lib/db';
 import { getAdminSession, getSessionFromRequest } from '@/lib/auth';
-import { revalidateTag } from 'next/cache';
+import { revalidateContent } from '@/lib/revalidate';
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const session = getSessionFromRequest(req) || (await getAdminSession(req));
@@ -32,7 +32,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Chapter not found' }, { status: 404 });
     }
 
-    revalidateTag('cms:beyondChapters');
+    revalidateContent('beyondChapters');
     return NextResponse.json({ success: true, chapter: updated });
   } catch (error: any) {
     if (error?.name === 'MongoUnavailableError') {
@@ -54,7 +54,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       return NextResponse.json({ error: 'Chapter not found' }, { status: 404 });
     }
 
-    revalidateTag('cms:beyondChapters');
+    revalidateContent('beyondChapters');
     return NextResponse.json({ success: true, message: 'Chapter deleted' });
   } catch (error: any) {
     if (error?.name === 'MongoUnavailableError') {

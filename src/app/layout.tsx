@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import { Cinzel, Playfair_Display, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import PublicLayoutWrapper from '@/components/layout/PublicLayoutWrapper';
 import { SettingsProvider } from '@/context/SettingsContext';
 import { getPublicSettings, getPublicNavigation } from '@/lib/content';
 import { SITE_ORIGIN } from '@/lib/config';
+import { safeJsonLd } from '@/lib/json-ld';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -111,21 +113,19 @@ export default async function RootLayout({
     >
       <head>
         {/* Google tag (gtag.js) */}
-        <script
-          async
+        <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-FS7C8RMVKB"
+          strategy="afterInteractive"
         />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
 
-              gtag('config', 'G-FS7C8RMVKB');
-            `,
-          }}
-        />
+            gtag('config', 'G-FS7C8RMVKB');
+          `}
+        </Script>
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
         <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
@@ -135,7 +135,7 @@ export default async function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: safeJsonLd({
               '@context': 'https://schema.org',
               '@type': 'TravelAgency',
               name: 'Explore With Sakar',

@@ -17,11 +17,29 @@ type SafeImageProps = ImageProps & {
 
 const FALLBACK = '/explore-with-sakar/images/mountains/sunrise-himalayas.jpg';
 
+const ALLOWED_REMOTE_HOSTNAMES = [
+  'explorewithsakar.com',
+  'www.explorewithsakar.com',
+  'storage.googleapis.com',
+  'firebasestorage.googleapis.com',
+  'images.unsplash.com',
+];
+
+function isSupportedRemote(srcStr: string): boolean {
+  if (!srcStr.startsWith('http://') && !srcStr.startsWith('https://')) return true;
+  try {
+    const host = new URL(srcStr).hostname;
+    return ALLOWED_REMOTE_HOSTNAMES.includes(host);
+  } catch {
+    return false;
+  }
+}
+
 export default function SafeImage({ src, fallbackSrc = FALLBACK, alt, ...props }: SafeImageProps) {
   const [errored, setErrored] = useState(false);
 
   const srcStr = typeof src === 'string' ? src : '';
-  const isExternal = srcStr.startsWith('http://') || srcStr.startsWith('https://');
+  const needsUnoptimized = Boolean(srcStr && !isSupportedRemote(srcStr));
 
   if (errored) {
     // Plain img fallback — always works, no hostname restriction
@@ -41,8 +59,9 @@ export default function SafeImage({ src, fallbackSrc = FALLBACK, alt, ...props }
       src={src}
       alt={alt}
       {...props}
-      unoptimized={isExternal}
+      unoptimized={props.unoptimized ?? needsUnoptimized}
       onError={() => setErrored(true)}
     />
   );
 }
+

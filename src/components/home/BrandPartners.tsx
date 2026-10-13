@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import {
   ArrowRight,
   Compass,
@@ -111,13 +112,13 @@ export default function BrandPartners({ partners: initialPartners = [] }: BrandP
         {...cardProps}
         className="group relative flex items-center justify-center h-16 sm:h-20 w-36 sm:w-48 px-3 cursor-pointer shrink-0 transition-transform duration-300 hover:scale-110"
       >
-        {/* Full-color Transparent Logo — No Card Background, No Border */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        {/* Full-color Transparent Logo — Next.js Optimized Image */}
+        <Image
           src={partner.logoUrl}
           alt={partner.name}
+          width={160}
+          height={60}
           className="max-h-12 sm:max-h-16 max-w-[130px] sm:max-w-[170px] w-auto h-auto object-contain transition-transform duration-300 drop-shadow-sm"
-          loading="eager"
         />
       </CardTag>
     );

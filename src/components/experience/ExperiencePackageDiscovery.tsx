@@ -5,6 +5,7 @@ import { ArrowRight, Sparkles, Check } from 'lucide-react';
 import PageHero from '@/components/common/PageHero';
 import CTASection from '@/components/common/CTASection';
 import { SITE_ORIGIN } from '@/lib/config';
+import { safeJsonLd } from '@/lib/json-ld';
 
 export interface PackageCard {
   slug: string;
@@ -100,11 +101,11 @@ export default function ExperiencePackageDiscovery({
       {/* Schema.org Structured Data */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbSchema) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(touristTripSchema) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(touristTripSchema) }}
       />
 
       {/* 1. Hero */}

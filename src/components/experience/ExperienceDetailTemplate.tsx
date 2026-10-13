@@ -18,6 +18,7 @@ import { ExtendedExperience } from '@/types/cms';
 import ExperienceCard from '@/components/common/ExperienceCard';
 import CTASection from '@/components/common/CTASection';
 import { SITE_ORIGIN, getCanonicalUrl } from '@/lib/config';
+import { safeJsonLd } from '@/lib/json-ld';
 
 interface Props {
   experience: ExtendedExperience;
@@ -94,7 +95,7 @@ export default function ExperienceDetailTemplate({
     <div className="min-h-screen bg-sand">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
       {/* 1. Full-Width Cinematic Hero Split */}
       <div className="grid grid-cols-1 lg:grid-cols-2 min-h-[60vh] lg:min-h-[75vh]">

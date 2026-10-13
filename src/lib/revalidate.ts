@@ -31,6 +31,10 @@ export function revalidateContent(collection: string, extraPathOrSlug?: string):
         revalidatePath('/');
         revalidatePath('/sitemap.xml');
         break;
+      case 'beyondChapters':
+        revalidatePath('/experiences/beyond-the-map');
+        revalidatePath('/experiences', 'layout');
+        break;
       case 'services':
         revalidatePath('/');
         break;

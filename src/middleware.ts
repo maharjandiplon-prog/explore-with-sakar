@@ -52,15 +52,54 @@ function safeCompare(a: string, b: string): boolean {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Strict CORS / Preflight handling for API routes: deny untrusted cross-origins
+  if (request.method === 'OPTIONS' && pathname.startsWith('/api/')) {
+    const origin = request.headers.get('origin');
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+    if (origin) {
+      try {
+        const originHost = new URL(origin).host;
+        if (host && originHost === host) {
+          return new NextResponse(null, {
+            status: 204,
+            headers: {
+              'Access-Control-Allow-Origin': origin,
+              'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-sync-secret',
+              'Access-Control-Allow-Credentials': 'true',
+              'Access-Control-Max-Age': '86400',
+            },
+          });
+        }
+      } catch {
+        // Invalid origin format
+      }
+    }
+    return new NextResponse(null, { status: 403 });
+  }
+
   const token =
     request.cookies.get(COOKIE_NAME)?.value ||
     request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
   const isInvalidOrExpired = !(await isTokenValid(token));
 
-  // 1. API Admin Protection
-  if (pathname.startsWith('/api/admin')) {
+  // 1. API Admin & Upload Protection
+  if (pathname.startsWith('/api/admin') || pathname.startsWith('/api/upload')) {
     if (pathname === '/api/admin/auth/login') {
       return NextResponse.next();
+    }
+
+    // Preview Safety: Block mutating admin/upload requests on Vercel Preview unless explicitly allowed
+    if (process.env.VERCEL_ENV === 'preview' && process.env.ALLOW_PREVIEW_WRITES !== 'true') {
+      if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
+        if (pathname !== '/api/admin/auth/logout') {
+          return NextResponse.json(
+            { error: 'Forbidden: Vercel Preview environment is read-only. Database mutations are blocked unless ALLOW_PREVIEW_WRITES=true.' },
+            { status: 403 }
+          );
+        }
+      }
     }
 
     // Allow bootstrap/diagnostic endpoints if valid x-sync-secret is presented
@@ -75,9 +114,35 @@ export async function middleware(request: NextRequest) {
       if (token) {
         res.cookies.delete(COOKIE_NAME);
       }
+      res.headers.set('X-Robots-Tag', 'noindex, nofollow');
       return res;
     }
-    return NextResponse.next();
+
+    // CSRF Protection for state-changing admin & upload actions (POST, PUT, DELETE, PATCH)
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
+      if (!isSyncSecretValid) {
+        const origin = request.headers.get('origin');
+        const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+        if (!origin) {
+          return NextResponse.json(
+            { error: 'Forbidden: Missing Origin header on state-changing request (CSRF protection)' },
+            { status: 403 }
+          );
+        }
+        try {
+          const originHost = new URL(origin).host;
+          if (!host || originHost !== host) {
+            return NextResponse.json({ error: 'Forbidden: Cross-site request rejected (CSRF)' }, { status: 403 });
+          }
+        } catch {
+          return NextResponse.json({ error: 'Forbidden: Invalid request origin' }, { status: 403 });
+        }
+      }
+    }
+
+    const res = NextResponse.next();
+    res.headers.set('X-Robots-Tag', 'noindex, nofollow');
+    return res;
   }
 
   // 2. Admin Web UI Protection
@@ -86,7 +151,9 @@ export async function middleware(request: NextRequest) {
 
     // NEVER redirect away from /admin/login automatically!
     if (isLoginPage) {
-      return NextResponse.next();
+      const res = NextResponse.next();
+      res.headers.set('X-Robots-Tag', 'noindex, nofollow');
+      return res;
     }
 
     // Protected admin route: if no token or expired, redirect to login & clear cookie
@@ -97,15 +164,18 @@ export async function middleware(request: NextRequest) {
       if (token) {
         res.cookies.delete(COOKIE_NAME);
       }
+      res.headers.set('X-Robots-Tag', 'noindex, nofollow');
       return res;
     }
 
-    return NextResponse.next();
+    const res = NextResponse.next();
+    res.headers.set('X-Robots-Tag', 'noindex, nofollow');
+    return res;
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/api/admin/:path*'],
+  matcher: ['/admin/:path*', '/api/:path*'],
 };

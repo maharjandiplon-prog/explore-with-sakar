@@ -46,7 +46,7 @@ export const EXPERIENCE_PILLARS: Record<string, ExperiencePillar> = {
     ],
     heroImage: '/explore-with-sakar/images/spiritual/buddhist-stupa.jpg',
     categoryFilter: ['go-spiritual', 'spiritual-wellness', 'spiritual'],
-    canonicalSlug: 'go-spiritual',
+    canonicalSlug: 'go-within',
   },
   'spiritual-wellness': {
     name: 'Go Spiritual',
@@ -64,7 +64,7 @@ export const EXPERIENCE_PILLARS: Record<string, ExperiencePillar> = {
     ],
     heroImage: '/explore-with-sakar/images/spiritual/buddhist-stupa.jpg',
     categoryFilter: ['go-spiritual', 'spiritual-wellness', 'spiritual'],
-    canonicalSlug: 'go-spiritual',
+    canonicalSlug: 'go-within',
   },
   'go-deeper': {
     name: 'Go Deeper',

@@ -4,11 +4,28 @@ const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-  { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+  { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
+  {
+    key: 'Content-Security-Policy-Report-Only',
+    value: [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: blob: https://storage.googleapis.com https://firebasestorage.googleapis.com https://explorewithsakar.com",
+      "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://firestore.googleapis.com https://*.google-analytics.com",
+      "frame-src 'self' https://www.youtube.com https://www.google.com",
+      "frame-ancestors 'self'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; '),
+  },
 ];
 
 const nextConfig = {
   reactStrictMode: false,
+  poweredByHeader: false,
+  productionBrowserSourceMaps: false,
   images: {
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [
@@ -27,6 +44,10 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'firebasestorage.googleapis.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
       },
     ],
   },
@@ -92,32 +113,32 @@ const nextConfig = {
       },
       {
         source: '/services/spiritual-wellness',
-        destination: '/experiences/beyond-the-map',
+        destination: '/experiences/go-within',
         permanent: true,
       },
       {
         source: '/service/spiritual-wellness',
-        destination: '/experiences/beyond-the-map',
+        destination: '/experiences/go-within',
         permanent: true,
       },
       {
         source: '/services/go-spiritual',
-        destination: '/experiences/beyond-the-map',
+        destination: '/experiences/go-within',
         permanent: true,
       },
       {
         source: '/service/go-spiritual',
-        destination: '/experiences/beyond-the-map',
+        destination: '/experiences/go-within',
         permanent: true,
       },
       {
         source: '/services/go-within',
-        destination: '/experiences/beyond-the-map',
+        destination: '/experiences/go-within',
         permanent: true,
       },
       {
         source: '/service/go-within',
-        destination: '/experiences/beyond-the-map',
+        destination: '/experiences/go-within',
         permanent: true,
       },
       {
@@ -142,12 +163,12 @@ const nextConfig = {
       },
       {
         source: '/services/leave-a-mark',
-        destination: '/experiences/beyond-the-map',
+        destination: '/experiences/leave-a-mark',
         permanent: true,
       },
       {
         source: '/service/leave-a-mark',
-        destination: '/experiences/beyond-the-map',
+        destination: '/experiences/leave-a-mark',
         permanent: true,
       },
       {
@@ -223,22 +244,52 @@ const nextConfig = {
       },
       {
         source: '/experience/go-spiritual',
-        destination: '/experiences/beyond-the-map',
+        destination: '/experiences/go-within',
         permanent: true,
       },
       {
         source: '/experience/spiritual-wellness',
-        destination: '/experiences/beyond-the-map',
+        destination: '/experiences/go-within',
         permanent: true,
       },
       {
         source: '/experience/go-within',
-        destination: '/experiences/spiritual-wellness',
+        destination: '/experiences/go-within',
         permanent: true,
       },
       {
-        source: '/experiences/go-within',
-        destination: '/experiences/spiritual-wellness',
+        source: '/experiences/spiritual-wellness',
+        destination: '/experiences/go-within',
+        permanent: true,
+      },
+      {
+        source: '/experiences/go-spiritual',
+        destination: '/experiences/go-within',
+        permanent: true,
+      },
+      {
+        source: '/experiences/feel-closer',
+        destination: '/experiences/homestays',
+        permanent: true,
+      },
+      {
+        source: '/experiences/custom-private-journeys',
+        destination: '/experiences/custom-journeys',
+        permanent: true,
+      },
+      {
+        source: '/experiences/go-beyond',
+        destination: '/experiences/beyond-the-map',
+        permanent: true,
+      },
+      {
+        source: '/experiences/responsible',
+        destination: '/experiences/leave-a-mark',
+        permanent: true,
+      },
+      {
+        source: '/experiences/all-curated-experiences',
+        destination: '/experiences',
         permanent: true,
       },
       {
@@ -338,6 +389,12 @@ const nextConfig = {
       {
         source: '/:path*',
         headers: securityHeaders,
+      },
+      {
+        source: '/admin/:path*',
+        headers: [
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
+        ],
       },
       {
         source: '/uploads/:path*',

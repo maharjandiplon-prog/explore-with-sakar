@@ -14,9 +14,8 @@ import LeaveAMarkExperience from '@/components/experience/LeaveAMarkExperience';
 import { getPublicEvents } from '@/lib/content';
 import { SITE_ORIGIN } from '@/lib/config';
 
-// Force dynamic rendering so Vercel never serves a stale statically-cached version
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+// ISR: cached for 5 minutes at Edge, revalidated on-demand when admin updates experiences
+export const revalidate = 300;
 
 interface Props {
   params: { slug: string };
@@ -129,9 +128,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const experience = await getPublicExperienceBySlug(slug);
   if (!experience) {
-    return {
-      title: 'Experience Not Found | Explore With Sakar',
-    };
+    notFound();
   }
 
   const seoTitle = experience.seoTitle || `${experience.title} | Explore With Sakar`;
@@ -158,8 +155,6 @@ export async function generateStaticParams() {
   const canonicalPillars = [
     'beyond-the-map',
     'go-within',
-    'go-spiritual',
-    'spiritual-wellness',
     'go-deeper',
     'homestays',
     'custom-journeys',
@@ -187,6 +182,9 @@ export default async function ExperienceDetailPage({ params }: Props) {
   if (slug === 'custom-private-journeys') {
     permanentRedirect('/experiences/custom-journeys');
   }
+  if (slug === 'go-spiritual' || slug === 'spiritual-wellness') {
+    permanentRedirect('/experiences/go-within');
+  }
 
   // Leave a Mark Experience Renderer
   if (slug === 'leave-a-mark') {
@@ -194,9 +192,9 @@ export default async function ExperienceDetailPage({ params }: Props) {
     return <LeaveAMarkExperience pageContent={pageContent} />;
   }
 
-  // Go Within / Go Spiritual Experience Renderer
-  if (slug === 'go-within' || slug === 'go-spiritual' || slug === 'spiritual-wellness') {
-    const pageContent = await getPageContent(slug);
+  // Go Within Experience Renderer
+  if (slug === 'go-within') {
+    const pageContent = await getPageContent('go-within');
     return <GoSpiritualExperience pageContent={pageContent} />;
   }
 
